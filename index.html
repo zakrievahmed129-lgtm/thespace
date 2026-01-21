@@ -5,7 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Odyssée Spatiale Pro - Ahmed Edition Ultime</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
     <style>
         body {
             margin: 0;
@@ -156,6 +162,59 @@
             background: linear-gradient(90deg, #ffaa00, #ffdd00);
             box-shadow: 0 0 10px #ffaa00;
             transition: width 0.3s;
+        }
+
+        /* RADAR UI */
+        #radar-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 180px;
+            height: 180px;
+            border: 2px solid rgba(0, 240, 255, 0.4);
+            border-radius: 50%;
+            background: rgba(0, 10, 20, 0.7);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        #radar-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #objective-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-bottom: 3px solid #00f0ff;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            z-index: 100;
+            min-width: 300px;
+            border-radius: 0 0 10px 10px;
+        }
+
+        #objective-title {
+            color: #ffaa00;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+        }
+
+        #objective-desc {
+            font-size: 1.1rem;
+            font-weight: bold;
         }
 
         #notification {
@@ -467,12 +526,14 @@
         </div>
     </div>
 
-    <div id="mission-panel">
-        <div class="mission-title">🎯 MISSION ACTIVE</div>
-        <div class="mission-desc" id="mission-desc"></div>
-        <div class="mission-progress">
-            <div class="mission-progress-bar" id="mission-progress-bar"></div>
-        </div>
+    <div id="objective-panel">
+        <div id="objective-title">DIRECTIONS DE MISSION</div>
+        <div id="objective-desc" id="objective-desc">SYNCHRONISATION...</div>
+    </div>
+
+    <!-- RADAR -->
+    <div id="radar-container" id="radar-ui">
+        <canvas id="radar-canvas" width="180" height="180"></canvas>
     </div>
 
     <div id="notification"></div>
@@ -497,13 +558,36 @@
         <div class="landing-text" id="landing-text">ENTRÉE ATMOSPHÉRIQUE</div>
     </div>
 
+    <!-- SHOP UI -->
+    <div id="shop-ui"
+        style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 600px; background: rgba(0, 20, 40, 0.9); border: 2px solid #00f0ff; padding: 20px; color: #fff; font-family: 'Orbitron', sans-serif; z-index: 1000; box-shadow: 0 0 50px rgba(0, 240, 255, 0.3);">
+        <h2 style="text-align: center; color: #00f0ff; text-shadow: 0 0 10px #00f0ff;">BOUTIQUE GALACTIQUE</h2>
+        <div
+            style="display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px;">
+            <span>CRÉDITS: <span id="shop-credits" style="color: #ffaa00;">0</span></span>
+            <span style="font-size: 0.8em; color: #888;">Appuyez sur 'B' pour fermer</span>
+        </div>
+        <div id="shop-items" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <!-- Items injected by JS -->
+        </div>
+    </div>
+
     <script>
-        let scene, camera, renderer, clock;
+        let scene, camera, renderer, composer, clock;
         let isLocked = false, currentMode = 'SPACE';
         let ship, stars, currentPlanetObj, planetEnvironment, engineFlames = [];
         let planets = [];
-        let enemies = [];
-        let health = 100, score = 0;
+        let enemies = []; // Space and Ground enemies
+        let spaceEnemies = [];
+        let health = 100, credits = 0; // Renamed score to credits
+        let shipHealth = 1000; // New Ship HP
+        let maxShipHealth = 1000;
+        let upgrades = {
+            laserLevel: 1, // 1 = Single, 2 = Twin, 3 = Quad
+            damage: 1,
+            speed: 1,
+            armor: 1
+        };
         let keys = {};
         const shipRot = { yaw: 0, pitch: 0 };
         const playerRot = { yaw: 0, pitch: 0 };
@@ -512,100 +596,155 @@
         let currentMission = null;
         let missionObjects = [];
         let collectedItems = 0;
+        let planetMissionStage = 0; // NEW: tracking multi-step planet missions
 
         // Cinematic states
         let gameStarted = false;
         let isInCinematic = false;
+        let shopOpen = false;
+
+        // --- GAMEPLAY V3 CAMPAIGN ---
+        let questStage = 0;
+        let warpGate = null;
+        let specialItems = {
+            cipherFound: false,
+            powerCores: 0,
+            gateRepaired: false
+        };
+
+        const QUEST_STAGES = [
+            { title: "INITIATION", desc: "Accumulez 1000 crédits pour préparer le voyage.", goal: 1000 },
+            { title: "ARMEMENT", desc: "Achetez l'armure 'Titan Plating' dans la Boutique (B).", goal: 1 },
+            { title: "LE CHIFFRE", desc: "Trouvez le Chiffre Ancien sur NEPTUNE-PRO.", goal: 1 },
+            { title: "ÉNERGIE NOIRE", desc: "Collectez 5 Noyaux d'Énergie sur MOLTEN-X.", goal: 5 },
+            { title: "ASCENSION", desc: "Atteignez la Porte Warp et activez-la (5000 CR).", goal: 5000 }
+        ];
 
         // --- TEXTURES ULTRA HD PROCÉDURALES ---
+        // --- TEXTURES ULTRA HD PROCÉDURALES AMÉLIORÉES ---
+
+        // Simple Value Noise implementation for procedural generation
+        const Noise = {
+            p: new Uint8Array(512),
+            permutation: [151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173, 186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59, 227, 47, 16, 58, 17, 182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180],
+            init: function () {
+                for (let i = 0; i < 256; i++) this.p[256 + i] = this.p[i] = this.permutation[i];
+            },
+            fade: function (t) { return t * t * t * (t * (t * 6 - 15) + 10); },
+            lerp: function (t, a, b) { return a + t * (b - a); },
+            grad: function (hash, x, y, z) {
+                const h = hash & 15;
+                const u = h < 8 ? x : y, v = h < 4 ? y : h == 12 || h == 14 ? x : z;
+                return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+            },
+            scale: function (n) { return (1 + n) / 2; },
+            perlin3: function (x, y, z) {
+                const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+                x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+                const u = this.fade(x), v = this.fade(y), w = this.fade(z);
+                const A = this.p[X] + Y, AA = this.p[A] + Z, AB = this.p[A + 1] + Z,
+                    B = this.p[X + 1] + Y, BA = this.p[B] + Z, BB = this.p[B + 1] + Z;
+                return this.lerp(w, this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y, z),
+                    this.grad(this.p[BA], x - 1, y, z)),
+                    this.lerp(u, this.grad(this.p[AB], x, y - 1, z),
+                        this.grad(this.p[BB], x - 1, y - 1, z))),
+                    this.lerp(v, this.lerp(u, this.grad(this.p[AA + 1], x, y, z - 1),
+                        this.grad(this.p[BA + 1], x - 1, y, z - 1)),
+                        this.lerp(u, this.grad(this.p[AB + 1], x, y - 1, z - 1),
+                            this.grad(this.p[BB + 1], x - 1, y - 1, z - 1))));
+            }
+        };
+        Noise.init();
+
         function createMetallicTexture() {
+            // Generates maps for realistic metal
+            const width = 2048, height = 2048; // ULTRA HD
             const canvas = document.createElement('canvas');
-            canvas.width = 2048;
-            canvas.height = 2048;
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
 
-            // Base métallique
-            const gradient = ctx.createLinearGradient(0, 0, 2048, 2048);
-            gradient.addColorStop(0, '#666666');
-            gradient.addColorStop(0.5, '#999999');
-            gradient.addColorStop(1, '#555555');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 2048, 2048);
+            // 1. Diffuse/Albedo Map
+            const imgData = ctx.createImageData(width, height);
+            const data = imgData.data;
 
-            // Rayures métalliques
-            for (let i = 0; i < 200; i++) {
-                ctx.strokeStyle = `rgba(${Math.random() > 0.5 ? 200 : 100}, ${Math.random() > 0.5 ? 200 : 100}, ${Math.random() > 0.5 ? 200 : 100}, 0.3)`;
-                ctx.lineWidth = Math.random() * 3;
-                ctx.beginPath();
-                ctx.moveTo(Math.random() * 2048, Math.random() * 2048);
-                ctx.lineTo(Math.random() * 2048, Math.random() * 2048);
-                ctx.stroke();
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    // Brushed metal noise
+                    const noiseVal = Noise.perlin3(x * 0.05, y * 0.005, 0);
+                    const val = 100 + noiseVal * 100;
+
+                    data[idx] = val; // R
+                    data[idx + 1] = val; // G
+                    data[idx + 2] = val + 10; // B (slightly bluish tint)
+                    data[idx + 3] = 255;
+                }
             }
+            ctx.putImageData(imgData, 0, 0);
 
-            // Reflets
-            for (let i = 0; i < 50; i++) {
-                const grd = ctx.createRadialGradient(
-                    Math.random() * 2048, Math.random() * 2048, 0,
-                    Math.random() * 2048, Math.random() * 2048, Math.random() * 300
-                );
-                grd.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-                grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                ctx.fillStyle = grd;
-                ctx.fillRect(0, 0, 2048, 2048);
+            // Add panels/plates details
+            ctx.strokeStyle = "rgba(0,0,0,0.5)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i < 20; i++) {
+                ctx.moveTo(0, Math.random() * height);
+                ctx.lineTo(width, Math.random() * height);
+                ctx.moveTo(Math.random() * width, 0);
+                ctx.lineTo(Math.random() * width, height);
+            }
+            ctx.stroke();
+
+            // Scratches
+            ctx.strokeStyle = "rgba(255,255,255,0.1)";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 500; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + (Math.random() - 0.5) * 50, y + (Math.random() - 0.5) * 50);
+                ctx.stroke();
             }
 
             return new THREE.CanvasTexture(canvas);
         }
 
         function createPlanetTexture(baseColor, isGround = false) {
-            const size = isGround ? 2048 : 1024;
+            const size = 2048; // ULTRA HD UNIFIED
             const canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
             const ctx = canvas.getContext('2d');
 
-            // Couleur de base avec dégradé
-            const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size);
-            grad.addColorStop(0, baseColor);
-            grad.addColorStop(1, adjustColor(baseColor, -30));
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, size, size);
+            const imgData = ctx.createImageData(size, size);
+            const data = imgData.data;
 
-            // Cratères et formations
-            for (let i = 0; i < 80; i++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const r = Math.random() * (isGround ? 300 : 150);
-                const crater = ctx.createRadialGradient(x, y, 0, x, y, r);
-                crater.addColorStop(0, `rgba(0,0,0,${Math.random() * 0.5})`);
-                crater.addColorStop(0.7, `rgba(0,0,0,${Math.random() * 0.2})`);
-                crater.addColorStop(1, 'transparent');
-                ctx.fillStyle = crater;
-                ctx.fillRect(0, 0, size, size);
-            }
+            const rBase = parseInt(baseColor.substr(1, 2), 16);
+            const gBase = parseInt(baseColor.substr(3, 2), 16);
+            const bBase = parseInt(baseColor.substr(5, 2), 16);
 
-            // Détails de surface
-            for (let i = 0; i < 6000; i++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const s = Math.random() * 5;
-                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.08)';
-                ctx.fillRect(x, y, s, s);
-            }
+            const scale = isGround ? 0.01 : 0.02;
 
-            // Veines minérales
-            for (let i = 0; i < 100; i++) {
-                ctx.strokeStyle = `rgba(${Math.random() * 100}, ${Math.random() * 100}, ${Math.random() * 255}, 0.3)`;
-                ctx.lineWidth = Math.random() * 4;
-                ctx.beginPath();
-                const startX = Math.random() * size;
-                const startY = Math.random() * size;
-                ctx.moveTo(startX, startY);
-                for (let j = 0; j < 5; j++) {
-                    ctx.lineTo(startX + (Math.random() - 0.5) * 200, startY + (Math.random() - 0.5) * 200);
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const idx = (y * size + x) * 4;
+
+                    // Layered noise for terrain
+                    let n = Noise.perlin3(x * scale, y * scale, 0);
+                    n += 0.5 * Noise.perlin3(x * scale * 2, y * scale * 2, 10);
+                    n += 0.25 * Noise.perlin3(x * scale * 4, y * scale * 4, 20);
+
+                    // Normalize -1..1 to 0..1 approx
+                    const val = Math.max(0, Math.min(1, (n + 1) / 2));
+
+                    data[idx] = rBase * val;
+                    data[idx + 1] = gBase * val;
+                    data[idx + 2] = bBase * val;
+                    data[idx + 3] = 255;
                 }
-                ctx.stroke();
             }
+            ctx.putImageData(imgData, 0, 0);
 
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -765,9 +904,9 @@
                     );
 
                     camera.position.set(
-                        ship.position.x + 800 - eased * 400,
-                        ship.position.y + 200,
-                        ship.position.z + 1000
+                        ship.position.x + 4000 - eased * 2000, // x5
+                        ship.position.y + 1000, // x5
+                        ship.position.z + 5000 // x5
                     );
                     camera.lookAt(ship.position);
 
@@ -783,18 +922,18 @@
 
                     // Ship continues moving
                     ship.position.set(
-                        -2000 + eased * 1500,
-                        500 + Math.sin(eased * Math.PI) * 200,
-                        -4000 + eased * 2500
+                        -10000 + eased * 7500, // x5 (-2000 -> -10000)
+                        2500 + Math.sin(eased * Math.PI) * 1000, // x5
+                        -20000 + eased * 12500 // x5
                     );
                     ship.rotation.y = Math.PI * 0.3 - eased * 0.4;
 
                     // Camera orbits around ship
                     const orbitAngle = phaseProgress * Math.PI * 0.8;
                     camera.position.set(
-                        ship.position.x + Math.cos(orbitAngle) * 300,
-                        ship.position.y + 50 + Math.sin(orbitAngle * 2) * 100,
-                        ship.position.z + Math.sin(orbitAngle) * 400 + 200
+                        ship.position.x + Math.cos(orbitAngle) * 1500, // x5
+                        ship.position.y + 250 + Math.sin(orbitAngle * 2) * 500, // x5
+                        ship.position.z + Math.sin(orbitAngle) * 2000 + 1000 // x5
                     );
                     camera.lookAt(ship.position);
 
@@ -814,22 +953,22 @@
 
                     // Ship accelerates dramatically
                     ship.position.set(
-                        -500 + eased * 400,
-                        500 + eased * -400,
-                        -1500 + eased * 2800
+                        -2500 + eased * 2000, // x5
+                        2500 + eased * -2000, // x5
+                        -7500 + eased * 14000 // x5
                     );
                     ship.rotation.y = Math.PI * -0.1;
 
                     // Camera behind ship for warp effect
                     camera.position.set(
                         ship.position.x,
-                        ship.position.y + 30,
-                        ship.position.z + 150
+                        ship.position.y + 150, // x5
+                        ship.position.z + 750 // x5
                     );
-                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, 0, -500)));
+                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, 0, -2500))); // x5
 
                     // Lens flare effect
-                    lensFlare.position.copy(camera.position).add(new THREE.Vector3(0, 0, -200));
+                    lensFlare.position.copy(camera.position).add(new THREE.Vector3(0, 0, -1000)); // x5
                     lensFlare.lookAt(camera.position);
                     flareMat.opacity = Math.sin(phaseProgress * Math.PI) * 0.3;
 
@@ -853,14 +992,14 @@
 
                     // Ship slows down
                     ship.position.set(
-                        -100 + eased * 100,
-                        100 + eased * -100,
-                        1300 + eased * 200
+                        -500 + eased * 500, // x5
+                        500 + eased * -500, // x5
+                        6500 + eased * 1000 // x5
                     );
                     ship.rotation.set(0, 0, 0);
 
                     // Camera settles behind ship
-                    const targetCamPos = ship.position.clone().add(new THREE.Vector3(0, 15, 65));
+                    const targetCamPos = ship.position.clone().add(new THREE.Vector3(0, 75, 325)); // x5
                     camera.position.lerp(targetCamPos, 0.08);
                     camera.lookAt(ship.position);
 
@@ -874,7 +1013,8 @@
                     });
                 }
 
-                renderer.render(scene, camera);
+                if (composer) composer.render();
+                else renderer.render(scene, camera);
 
                 if (progress < 1) {
                     requestAnimationFrame(animateIntro);
@@ -926,27 +1066,31 @@
 
             // Position ship high above the planet for cinematic entry
             const planetPos = planet.position.clone();
-            const startHeight = planet.userData.size + 4000;
+            const startHeight = planet.userData.size + 10000; // Updated height
             const approachAngle = Math.random() * Math.PI * 2;
 
             ship.scale.set(1, 1, 1);
             ship.position.set(
-                planetPos.x + Math.cos(approachAngle) * 800,
+                planetPos.x + Math.cos(approachAngle) * 2500, // x3 radius
                 planetPos.y + startHeight,
-                planetPos.z + Math.sin(approachAngle) * 800
+                planetPos.z + Math.sin(approachAngle) * 2500 // x3 radius
             );
-            ship.rotation.set(1.0, approachAngle, 0.15); // Steeper nose down for dramatic reentry
+            // Set proper initial rotation - nose pointing down toward planet
+            ship.rotation.order = 'YXZ';
+            ship.rotation.y = approachAngle + Math.PI / 2; // Face tangent direction
+            ship.rotation.x = 0.8; // Nose down for reentry
+            ship.rotation.z = 0;
 
             // Create massive reentry particle effects
-            const particleCount = 400;
+            const particleCount = 1000; // Increased count
             const particleGeo = new THREE.BufferGeometry();
             const particlePositions = new Float32Array(particleCount * 3);
             const particleColors = new Float32Array(particleCount * 3);
 
             for (let i = 0; i < particleCount; i++) {
-                particlePositions[i * 3] = (Math.random() - 0.5) * 80;
-                particlePositions[i * 3 + 1] = Math.random() * 200;
-                particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+                particlePositions[i * 3] = (Math.random() - 0.5) * 300; // x4 width
+                particlePositions[i * 3 + 1] = Math.random() * 600; // x3 height
+                particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 300; // x4 width
                 // Orange to yellow gradient
                 particleColors[i * 3] = 1.0;
                 particleColors[i * 3 + 1] = 0.3 + Math.random() * 0.5;
@@ -957,7 +1101,7 @@
             particleGeo.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
 
             const particleMat = new THREE.PointsMaterial({
-                size: 6,
+                size: 8, // Larger particles
                 transparent: true,
                 opacity: 0.9,
                 vertexColors: true,
@@ -968,7 +1112,7 @@
             scene.add(landingParticles);
 
             // Create multiple reentry glow layers
-            const glowGeo = new THREE.SphereGeometry(40, 24, 24);
+            const glowGeo = new THREE.SphereGeometry(120, 32, 32); // x3 radius
             const glowMat = new THREE.MeshBasicMaterial({
                 color: 0xff4400,
                 transparent: true,
@@ -979,7 +1123,7 @@
             scene.add(reentryGlow);
 
             // Outer corona glow
-            const coronaGeo = new THREE.SphereGeometry(60, 16, 16);
+            const coronaGeo = new THREE.SphereGeometry(180, 32, 32); // x3 radius
             const coronaMat = new THREE.MeshBasicMaterial({
                 color: 0xff6600,
                 transparent: true,
@@ -990,24 +1134,48 @@
             scene.add(coronaGlow);
 
             // Create fire trail behind ship
-            const trailCount = 100;
+            const trailCount = 200; // More trail
             const trailGeo = new THREE.BufferGeometry();
             const trailPositions = new Float32Array(trailCount * 3);
             for (let i = 0; i < trailCount; i++) {
-                trailPositions[i * 3] = 0;
-                trailPositions[i * 3 + 1] = i * 3;
-                trailPositions[i * 3 + 2] = 0;
+                trailPositions[i * 3] = (Math.random() - 0.5) * 20; // Spread x
+                trailPositions[i * 3 + 1] = i * 6; // Longer trail
+                trailPositions[i * 3 + 2] = (Math.random() - 0.5) * 20; // Spread z
             }
             trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
             const trailMat = new THREE.PointsMaterial({
                 color: 0xff2200,
-                size: 8,
+                size: 15, // Huge fire
                 transparent: true,
                 opacity: 0.7,
                 blending: THREE.AdditiveBlending
             });
             fireTrail = new THREE.Points(trailGeo, trailMat);
             scene.add(fireTrail);
+
+            // Create heat shield effect (glowing disc in front of ship)
+            const shieldGeo = new THREE.CircleGeometry(70, 32); // x3 radius (70 covers 50 width well)
+            const shieldMat = new THREE.MeshBasicMaterial({
+                color: 0xff3300,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
+            });
+            const heatShield = new THREE.Mesh(shieldGeo, shieldMat);
+            scene.add(heatShield);
+
+            // Create shock wave rings
+            const shockwaveGeo = new THREE.RingGeometry(60, 80, 32); // Larger rings
+            const shockwaveMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
+            });
+            const shockwave = new THREE.Mesh(shockwaveGeo, shockwaveMat);
+            scene.add(shockwave);
 
             // Cinematic timing - Extended to 10 seconds
             let cinematicStartTime = 0;
@@ -1074,30 +1242,43 @@
                 const spiralAngle = approachAngle + progress * Math.PI * 0.5;
                 const spiralRadius = 800 * (1 - descentProgress * 0.9);
 
-                ship.position.set(
-                    planetPos.x + Math.cos(spiralAngle) * spiralRadius,
-                    planetPos.y + currentHeight,
-                    planetPos.z + Math.sin(spiralAngle) * spiralRadius
-                );
+                // Calculate ship position - descending in a spiral
+                const shipX = planetPos.x + Math.cos(spiralAngle) * spiralRadius;
+                const shipY = planetPos.y + currentHeight;
+                const shipZ = planetPos.z + Math.sin(spiralAngle) * spiralRadius;
+                ship.position.set(shipX, shipY, shipZ);
 
-                // Ship gradually levels out
-                const pitchAngle = 1.0 - (easeOut(progress) * 1.0);
+                // Calculate proper ship orientation - ALWAYS pointing down toward planet center
+                // Use lookAt to point ship toward where it's going (center of planet)
+                const targetPoint = new THREE.Vector3(planetPos.x, planetPos.y, planetPos.z);
+
+                // Calculate direction to planet center
+                const dirToPlanet = new THREE.Vector3().subVectors(targetPoint, ship.position).normalize();
+
+                // Ship pitch: nose down during entry, gradually leveling out
+                const pitchAngle = 0.8 * (1 - easeOut(progress)); // Start at 0.8 rad, end at 0
+
+                // Ship yaw: facing the direction of travel (tangent to spiral)
+                const tangentAngle = spiralAngle + Math.PI / 2; // Perpendicular to radius
+
+                // Apply rotations in correct order (YXZ to avoid gimbal issues)
+                ship.rotation.order = 'YXZ';
+                ship.rotation.y = tangentAngle;
                 ship.rotation.x = pitchAngle;
-                ship.rotation.y = spiralAngle + Math.PI;
-                ship.rotation.z = Math.sin(elapsed * 0.003) * 0.08 * (1 - progress);
+                ship.rotation.z = Math.sin(elapsed * 0.002) * 0.05 * (1 - progress); // Slight roll wobble
 
-                // Update main particles
+                // Update main particles - follow ship
                 landingParticles.position.copy(ship.position);
-                landingParticles.position.y += 30;
+                landingParticles.position.y += 150; // x5 speed
                 landingParticles.rotation.y += 0.02;
 
                 const positions = landingParticles.geometry.attributes.position.array;
                 for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3 + 1] += 8;
-                    if (positions[i * 3 + 1] > 250) {
+                    positions[i * 3 + 1] += 40; // x5 speed
+                    if (positions[i * 3 + 1] > 1250) { // x5 height
                         positions[i * 3 + 1] = 0;
-                        positions[i * 3] = (Math.random() - 0.5) * 80;
-                        positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+                        positions[i * 3] = (Math.random() - 0.5) * 400; // x5 spread
+                        positions[i * 3 + 2] = (Math.random() - 0.5) * 400; // x5 spread
                     }
                 }
                 landingParticles.geometry.attributes.position.needsUpdate = true;
@@ -1105,7 +1286,7 @@
 
                 // Update fire trail
                 fireTrail.position.copy(ship.position);
-                fireTrail.position.y += 50;
+                fireTrail.position.y += 250; // x5 speed
                 fireTrail.rotation.x = -pitchAngle;
                 trailMat.opacity = Math.max(0, 0.7 - progress * 1.0);
 
@@ -1118,14 +1299,36 @@
                 coronaMat.opacity = Math.max(0, 0.3 - progress * 0.5);
                 coronaGlow.scale.setScalar(1.5 + Math.sin(elapsed * 0.01) * 0.4);
 
+                // Update heat shield - visible during atmospheric entry
+                heatShield.position.copy(ship.position);
+                // Position shield in front of ship (nose)
+                const shieldOffset = new THREE.Vector3(0, 0, -50); // Adjusted for nose length
+                shieldOffset.applyEuler(ship.rotation);
+                heatShield.position.add(shieldOffset);
+                heatShield.rotation.copy(ship.rotation);
+                heatShield.rotation.x += Math.PI / 2; // Face forward
+                shieldMat.opacity = Math.max(0, 0.6 * (1 - progress * 1.5));
+                heatShield.scale.setScalar(1 + Math.sin(elapsed * 0.02) * 0.15);
+                // Color shift from red-orange to yellow as it heats up
+                const heatIntensity = Math.max(0, 1 - progress * 1.2);
+                shieldMat.color.setHSL(0.05 + heatIntensity * 0.03, 1, 0.5 + heatIntensity * 0.2);
+
+                // Update shockwave - expanding ring around ship
+                shockwave.position.copy(ship.position);
+                shockwave.rotation.copy(ship.rotation);
+                shockwave.rotation.x += Math.PI / 2;
+                const shockScale = 1 + (elapsed * 0.001) % 3;
+                shockwave.scale.setScalar(shockScale);
+                shockwaveMat.opacity = Math.max(0, (0.3 - shockScale * 0.1) * (1 - progress));
+
                 // EPIC CINEMATIC CAMERA WORK - 5 Phases
                 if (progress < phases[0].end) {
                     // Phase 1: Space view - Camera far away, shows ship approaching planet
                     const phaseProgress = progress / phases[0].end;
-                    const camDist = 2000 - phaseProgress * 500;
+                    const camDist = 10000 - phaseProgress * 2500; // x5
                     camera.position.set(
                         planetPos.x + camDist * 0.7,
-                        planetPos.y + startHeight * 0.5 + phaseProgress * 500,
+                        planetPos.y + startHeight * 0.5 + phaseProgress * 2500, // x5 (offset part)
                         planetPos.z + camDist
                     );
                     camera.lookAt(ship.position);
@@ -1137,9 +1340,9 @@
                     const phaseProgress = (progress - phases[1].start) / (phases[1].end - phases[1].start);
                     const orbitAngle = phaseProgress * Math.PI * 0.4;
                     camera.position.set(
-                        ship.position.x + Math.cos(orbitAngle + spiralAngle) * 400,
-                        ship.position.y + 150 - phaseProgress * 50,
-                        ship.position.z + Math.sin(orbitAngle + spiralAngle) * 400
+                        ship.position.x + Math.cos(orbitAngle + spiralAngle) * 2000, // x5
+                        ship.position.y + 750 - phaseProgress * 250, // x5
+                        ship.position.z + Math.sin(orbitAngle + spiralAngle) * 2000 // x5
                     );
                     camera.lookAt(ship.position);
                     camera.fov = 65 + phaseProgress * 10;
@@ -1148,10 +1351,10 @@
                 else if (progress < phases[2].end) {
                     // Phase 3: Fireball - Close chase camera
                     const phaseProgress = (progress - phases[2].start) / (phases[2].end - phases[2].start);
-                    const camOffset = new THREE.Vector3(0, 60 + Math.sin(phaseProgress * Math.PI) * 30, 120);
+                    const camOffset = new THREE.Vector3(0, 300 + Math.sin(phaseProgress * Math.PI) * 150, 600); // x5
                     camOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), ship.rotation.y);
                     camera.position.lerp(ship.position.clone().add(camOffset), 0.08);
-                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, -30, 0)));
+                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, -150, 0))); // x5 (-30 -> -150)
                     camera.fov = 75;
                     camera.updateProjectionMatrix();
                 }
@@ -1160,9 +1363,9 @@
                     const phaseProgress = (progress - phases[3].start) / (phases[3].end - phases[3].start);
                     const flybyAngle = phaseProgress * Math.PI * 0.6;
                     camera.position.set(
-                        ship.position.x + Math.sin(flybyAngle) * 200,
-                        ship.position.y - 50 + Math.cos(flybyAngle * 2) * 80,
-                        ship.position.z + Math.cos(flybyAngle) * 250
+                        ship.position.x + Math.sin(flybyAngle) * 1000, // x5
+                        ship.position.y - 250 + Math.cos(flybyAngle * 2) * 400, // x5
+                        ship.position.z + Math.cos(flybyAngle) * 1250 // x5
                     );
                     camera.lookAt(ship.position);
                     camera.fov = 70 - phaseProgress * 5;
@@ -1173,9 +1376,9 @@
                     const phaseProgress = (progress - phases[4].start) / (phases[4].end - phases[4].start);
                     const eased = easeOut(phaseProgress);
                     camera.position.set(
-                        ship.position.x + 80 * (1 - eased * 0.5),
-                        ship.position.y - 60 + eased * 100,
-                        ship.position.z + 120 - eased * 30
+                        ship.position.x + 400 * (1 - eased * 0.5), // x5
+                        ship.position.y - 300 + eased * 500, // x5
+                        ship.position.z + 600 - eased * 150 // x5
                     );
                     camera.lookAt(ship.position);
                     camera.fov = 65 + eased * 5;
@@ -1184,7 +1387,7 @@
 
                 // Intense camera shake during atmospheric phases
                 if (progress > 0.15 && progress < 0.7) {
-                    const intensity = Math.sin((progress - 0.15) / 0.55 * Math.PI) * 5;
+                    const intensity = Math.sin((progress - 0.15) / 0.55 * Math.PI) * 25; // x5 intensity
                     camera.position.x += (Math.random() - 0.5) * intensity;
                     camera.position.y += (Math.random() - 0.5) * intensity;
                     camera.position.z += (Math.random() - 0.5) * intensity * 0.5;
@@ -1196,7 +1399,8 @@
                     f.scale.setScalar(flameIntensity + Math.sin(elapsed * 0.025 + i) * 0.6);
                 });
 
-                renderer.render(scene, camera);
+                if (composer) composer.render();
+                else renderer.render(scene, camera);
 
                 if (progress < 1) {
                     requestAnimationFrame(animateLanding);
@@ -1206,6 +1410,8 @@
                     scene.remove(reentryGlow);
                     scene.remove(coronaGlow);
                     scene.remove(fireTrail);
+                    scene.remove(heatShield);
+                    scene.remove(shockwave);
 
                     landingParticles.geometry.dispose();
                     landingParticles.material.dispose();
@@ -1215,6 +1421,10 @@
                     coronaMat.dispose();
                     fireTrail.geometry.dispose();
                     fireTrail.material.dispose();
+                    heatShield.geometry.dispose();
+                    shieldMat.dispose();
+                    shockwave.geometry.dispose();
+                    shockwaveMat.dispose();
 
                     landingParticles = null;
                     reentryGlow = null;
@@ -1258,31 +1468,37 @@
 
             // Store starting position (on planet surface)
             const startPos = ship.position.clone();
-            const targetHeight = 3000;
+            const targetHeight = 10000; // x3 height
+
+            // Initialize ship rotation for takeoff - pointing straight up
+            ship.rotation.order = 'YXZ';
+            ship.rotation.x = 0;
+            ship.rotation.y = 0;
+            ship.rotation.z = 0;
 
             // Create takeoff particle effects (dust/thrust)
-            const dustCount = 300;
+            const dustCount = 800; // More dust
             const dustGeo = new THREE.BufferGeometry();
             const dustPositions = new Float32Array(dustCount * 3);
             const dustVelocities = [];
 
             for (let i = 0; i < dustCount; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * 100;
+                const dist = Math.random() * 500; // x5 radius
                 dustPositions[i * 3] = Math.cos(angle) * dist;
-                dustPositions[i * 3 + 1] = Math.random() * 20;
+                dustPositions[i * 3 + 1] = Math.random() * 50; // Higher dust
                 dustPositions[i * 3 + 2] = Math.sin(angle) * dist;
                 dustVelocities.push({
-                    x: (Math.random() - 0.5) * 3,
-                    y: Math.random() * 2 + 1,
-                    z: (Math.random() - 0.5) * 3
+                    x: (Math.random() - 0.5) * 8, // Faster expansion
+                    y: Math.random() * 5 + 2,
+                    z: (Math.random() - 0.5) * 8
                 });
             }
             dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
 
             const dustMat = new THREE.PointsMaterial({
                 color: currentPlanetObj.userData.atmosphereColor,
-                size: 5,
+                size: 15, // Larger puffs
                 transparent: true,
                 opacity: 0.6,
                 blending: THREE.AdditiveBlending
@@ -1292,20 +1508,20 @@
             scene.add(dustParticles);
 
             // Create engine exhaust
-            const exhaustCount = 150;
+            const exhaustCount = 300;
             const exhaustGeo = new THREE.BufferGeometry();
             const exhaustPositions = new Float32Array(exhaustCount * 3);
 
             for (let i = 0; i < exhaustCount; i++) {
-                exhaustPositions[i * 3] = (Math.random() - 0.5) * 30;
-                exhaustPositions[i * 3 + 1] = -Math.random() * 100;
-                exhaustPositions[i * 3 + 2] = (Math.random() - 0.5) * 30;
+                exhaustPositions[i * 3] = (Math.random() - 0.5) * 100; // Wider spread
+                exhaustPositions[i * 3 + 1] = -Math.random() * 300; // Longer trail
+                exhaustPositions[i * 3 + 2] = (Math.random() - 0.5) * 100;
             }
             exhaustGeo.setAttribute('position', new THREE.BufferAttribute(exhaustPositions, 3));
 
             const exhaustMat = new THREE.PointsMaterial({
                 color: 0x00f0ff,
-                size: 6,
+                size: 12, // Huge exhaust
                 transparent: true,
                 opacity: 0.8,
                 blending: THREE.AdditiveBlending
@@ -1314,18 +1530,18 @@
             scene.add(exhaustParticles);
 
             // Create speed lines for atmosphere escape
-            const speedLineCount = 100;
+            const speedLineCount = 200;
             const speedGeo = new THREE.BufferGeometry();
             const speedPositions = new Float32Array(speedLineCount * 6); // Lines have 2 points each
 
             for (let i = 0; i < speedLineCount; i++) {
-                const x = (Math.random() - 0.5) * 500;
-                const z = (Math.random() - 0.5) * 500;
+                const x = (Math.random() - 0.5) * 2000; // Wider field
+                const z = (Math.random() - 0.5) * 2000;
                 speedPositions[i * 6] = x;
-                speedPositions[i * 6 + 1] = Math.random() * 200;
+                speedPositions[i * 6 + 1] = Math.random() * 500;
                 speedPositions[i * 6 + 2] = z;
                 speedPositions[i * 6 + 3] = x;
-                speedPositions[i * 6 + 4] = speedPositions[i * 6 + 1] + 50;
+                speedPositions[i * 6 + 4] = speedPositions[i * 6 + 1] + 150; // Longer lines
                 speedPositions[i * 6 + 5] = z;
             }
             speedGeo.setAttribute('position', new THREE.BufferAttribute(speedPositions, 3));
@@ -1457,9 +1673,9 @@
                 if (progress < phases[0].end) {
                     // Power up - dramatic low angle
                     camera.position.set(
-                        ship.position.x + 80,
-                        ship.position.y - 20,
-                        ship.position.z + 100
+                        ship.position.x + 400, // x5
+                        ship.position.y - 100, // x5
+                        ship.position.z + 500 // x5
                     );
                     camera.lookAt(ship.position);
                 }
@@ -1467,9 +1683,9 @@
                     // Liftoff - rising with ship
                     const phaseProgress = (progress - phases[1].start) / (phases[1].end - phases[1].start);
                     camera.position.set(
-                        ship.position.x + 100 - phaseProgress * 20,
-                        ship.position.y - 30 + phaseProgress * 20,
-                        ship.position.z + 120
+                        ship.position.x + 500 - phaseProgress * 100, // x5
+                        ship.position.y - 150 + phaseProgress * 100, // x5
+                        ship.position.z + 600 // x5
                     );
                     camera.lookAt(ship.position);
                 }
@@ -1477,11 +1693,11 @@
                     // Ascent - chase camera
                     const phaseProgress = (progress - phases[2].start) / (phases[2].end - phases[2].start);
                     camera.position.set(
-                        ship.position.x + 50,
-                        ship.position.y + 30,
-                        ship.position.z + 150
+                        ship.position.x + 250, // x5
+                        ship.position.y + 150, // x5
+                        ship.position.z + 750 // x5
                     );
-                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, 100, 0)));
+                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, 500, 0))); // x5
                     camera.fov = 70 + phaseProgress * 15;
                     camera.updateProjectionMatrix();
                 }
@@ -1490,10 +1706,10 @@
                     const phaseProgress = (progress - phases[3].start) / (phases[3].end - phases[3].start);
                     camera.position.set(
                         ship.position.x,
-                        ship.position.y + 50,
-                        ship.position.z + 180
+                        ship.position.y + 250, // x5
+                        ship.position.z + 900 // x5
                     );
-                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, -200, 0)));
+                    camera.lookAt(ship.position.clone().add(new THREE.Vector3(0, -1000, 0))); // x5
                     camera.fov = 85 - phaseProgress * 10;
                     camera.updateProjectionMatrix();
                 }
@@ -1501,7 +1717,7 @@
                     // Space - settling behind
                     const phaseProgress = (progress - phases[4].start) / (phases[4].end - phases[4].start);
                     const eased = easeOut(phaseProgress);
-                    camera.position.lerp(ship.position.clone().add(new THREE.Vector3(0, 15, 65)), 0.05);
+                    camera.position.lerp(ship.position.clone().add(new THREE.Vector3(0, 75, 325)), 0.05); // x5
                     camera.lookAt(ship.position);
                     camera.fov = 75 - eased * 5;
                     camera.updateProjectionMatrix();
@@ -1509,7 +1725,7 @@
 
                 // Camera shake during thrust
                 if (progress > 0.1 && progress < 0.7) {
-                    const intensity = 3 * (1 - progress);
+                    const intensity = 15 * (1 - progress); // x5
                     camera.position.x += (Math.random() - 0.5) * intensity;
                     camera.position.y += (Math.random() - 0.5) * intensity;
                 }
@@ -1520,7 +1736,8 @@
                     f.scale.setScalar(flameIntensity + Math.sin(elapsed * 0.03 + i) * 0.8);
                 });
 
-                renderer.render(scene, camera);
+                if (composer) composer.render();
+                else renderer.render(scene, camera);
 
                 if (progress < 1) {
                     requestAnimationFrame(animateTakeoff);
@@ -1569,13 +1786,19 @@
 
             clock = new THREE.Clock();
 
-            scene.add(new THREE.AmbientLight(0x111122, 0.4));
-            const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+            scene.add(new THREE.AmbientLight(0x111122, 0.2)); // Reduced ambient, use hemisphere
+
+            // Richer lighting for metallic materials
+            const hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.3); // Blue sky, Greenish ground reflection
+            scene.add(hemiLight);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 2.0); // Reduced from 3.0
             sun.position.set(2000, 2000, 2000);
+            sun.castShadow = true;
             scene.add(sun);
 
             createStars();
-            ship = createShip();
+            ship = createTitanShip();
             scene.add(ship);
             ship.position.set(0, 0, 1500);
 
@@ -1583,19 +1806,37 @@
             createHDPlanet("NEPTUNE-PRO", "#0088ff", 450, new THREE.Vector3(-6000, 800, -8000), 0x00ffff, "Détruire 3 antennes alien");
             createHDPlanet("KRYPTON-ELITE", "#44ff44", 350, new THREE.Vector3(0, -2000, -12000), 0x44ff88, "Scanner 4 monolithes anciens");
 
-            window.addEventListener('keydown', e => keys[e.code] = true);
+            window.addEventListener('keydown', e => {
+                keys[e.code] = true;
+                if (e.code === 'Space' && !isInCinematic) shoot(); // Fallback trigger
+                if (e.code === 'KeyE' && !isInCinematic) tryInteract();
+            });
             window.addEventListener('keyup', e => keys[e.code] = false);
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mousedown', () => {
+                console.log("MOUSE DOWN DETECTED. GameStarted:", gameStarted, "Locked:", isLocked, "Cinematic:", isInCinematic);
                 if (!gameStarted) return;
                 if (!isLocked) document.body.requestPointerLock();
                 else if (!isInCinematic) shoot();
             });
             document.addEventListener('pointerlockchange', () => isLocked = document.pointerLockElement === document.body);
-            window.addEventListener('keydown', e => { if (e.code === 'KeyE' && !isInCinematic) tryInteract(); });
 
             // Start intro cinematic
             startIntroCinematic();
+
+            // BLOOM POST-PROCESSING
+            const renderScene = new THREE.RenderPass(scene, camera);
+            const bloomPass = new THREE.UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                1.5, 0.4, 0.85
+            );
+            bloomPass.threshold = 0.85; // High threshold to avoid planet ground blooming
+            bloomPass.strength = 0.8; // Reduced strength
+            bloomPass.radius = 0.5;
+
+            composer = new THREE.EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
 
             animate();
         }
@@ -1612,92 +1853,198 @@
         }
 
         function createShip() {
-            const g = new THREE.Group();
+            const shipGroup = new THREE.Group();
 
-            // Texture métallique HD
+            // 1. ADVANCED MATERIALS
             const metalTex = createMetallicTexture();
-            const bodyMat = new THREE.MeshStandardMaterial({
+            const hullMat = new THREE.MeshStandardMaterial({
+                color: 0x888888,
                 map: metalTex,
-                metalness: 0.95,
-                roughness: 0.15,
-                envMapIntensity: 1
+                roughness: 0.3,
+                metalness: 0.8,
+                envMapIntensity: 1.5,
+                bumpMap: metalTex,
+                bumpScale: 0.05
             });
 
-            // Cockpit en verre avec reflets
-            const cockpitGeo = new THREE.SphereGeometry(1.5, 32, 32);
-            const cockpit = new THREE.Mesh(cockpitGeo, new THREE.MeshPhysicalMaterial({
-                color: 0x00f0ff,
-                metalness: 0.2,
-                roughness: 0.1,
+            const darkMetalMat = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                map: metalTex,
+                roughness: 0.5,
+                metalness: 0.6,
+                bumpMap: metalTex,
+                bumpScale: 0.02
+            });
+
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0x00aaff,
+                metalness: 0.1,
+                roughness: 0.0,
+                transmission: 0.9,
                 transparent: true,
-                opacity: 0.4,
-                transmission: 0.9
-            }));
-            cockpit.position.set(0, 0.8, -3);
-            g.add(cockpit);
+                opacity: 0.6,
+                reflectivity: 1.0,
+                clearcoat: 1.0
+            });
 
-            // Corps principal avec détails
-            const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1.5, 10, 16), bodyMat);
-            hull.rotation.x = Math.PI / 2;
-            g.add(hull);
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+            const engineGlowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
 
-            // Ailes avec panneaux
-            const wingGeo = new THREE.BoxGeometry(14, 0.4, 4);
-            const wings = new THREE.Mesh(wingGeo, bodyMat);
-            g.add(wings);
+            // 2. FUSELAGE (Main Body)
+            // Central body composed of multiple sections
+            const noseGeo = new THREE.ConeGeometry(0.8, 4, 32);
+            const nose = new THREE.Mesh(noseGeo, hullMat);
+            nose.rotation.x = -Math.PI / 2;
+            nose.position.z = -5;
+            shipGroup.add(nose);
 
-            // Détails néon
-            const neonMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
-            for (let i = 0; i < 3; i++) {
-                const neon = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.08, 0.08), neonMat);
-                neon.position.z = -1.5 + i * 0.8;
-                g.add(neon);
-            }
+            const mainBodyGeo = new THREE.CylinderGeometry(1.2, 0.8, 6, 32);
+            const mainBody = new THREE.Mesh(mainBodyGeo, hullMat);
+            mainBody.rotation.x = Math.PI / 2;
+            mainBody.position.z = 0;
+            shipGroup.add(mainBody);
 
-            // Lignes de fuselage
-            for (let i = 0; i < 8; i++) {
-                const line = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 10), bodyMat);
-                line.position.x = Math.cos(i * Math.PI / 4) * 1;
-                line.position.y = Math.sin(i * Math.PI / 4) * 1;
-                line.rotation.x = Math.PI / 2;
-                g.add(line);
-            }
+            const rearSectionGeo = new THREE.BoxGeometry(3, 1.5, 4);
+            const rearSection = new THREE.Mesh(rearSectionGeo, darkMetalMat);
+            rearSection.position.z = 4;
+            shipGroup.add(rearSection);
 
-            // Réacteurs avec glow
+            // 3. COCKPIT
+            const cockpitGeo = new THREE.Group();
+            // Canopy
+            const canopyGeo = new THREE.CapsuleGeometry(0.9, 2, 4, 16);
+            const canopy = new THREE.Mesh(canopyGeo, glassMat);
+            canopy.rotation.x = Math.PI / 2;
+            canopy.position.set(0, 0.5, -1);
+            canopy.scale.set(1, 0.8, 1);
+            cockpitGeo.add(canopy);
+
+            // Interior details (Pilot seat hint)
+            const seatGeo = new THREE.BoxGeometry(0.6, 0.8, 0.6);
+            const seat = new THREE.Mesh(seatGeo, darkMetalMat);
+            seat.position.set(0, 0.2, -0.5);
+            cockpitGeo.add(seat);
+
+            shipGroup.add(cockpitGeo);
+
+            // 4. WINGS (Fixed Alignment)
+            // Using simpler geometry to ensure straightness
+            const wingGeo = new THREE.BoxGeometry(10, 0.2, 5);
+            const wings = new THREE.Mesh(wingGeo, hullMat);
+            wings.position.set(0, 0, 1);
+            shipGroup.add(wings);
+
+            // Wing Tips (Vertical)
+            const tipGeo = new THREE.BoxGeometry(0.2, 1.5, 3);
+            const leftTip = new THREE.Mesh(tipGeo, darkMetalMat);
+            leftTip.position.set(-5, 0.5, 1);
+            shipGroup.add(leftTip);
+
+            const rightTip = new THREE.Mesh(tipGeo, darkMetalMat);
+            rightTip.position.set(5, 0.5, 1);
+            shipGroup.add(rightTip);
+
+            // Vertical Stabilizer (Central Tail)
+            const tailGeo = new THREE.BoxGeometry(0.2, 4, 3);
+            const tail = new THREE.Mesh(tailGeo, hullMat);
+            tail.position.set(0, 2, 4.5);
+            shipGroup.add(tail);
+
+            // 5. ENGINES (Turbines & Glow)
+            const engineGeo = new THREE.CylinderGeometry(0.8, 1.2, 4, 16, 1, true);
+
+            const leftEngine = new THREE.Mesh(engineGeo, darkMetalMat);
+            leftEngine.rotation.x = Math.PI / 2;
+            leftEngine.position.set(-3.5, 0, 3);
+            shipGroup.add(leftEngine);
+
+            const rightEngine = new THREE.Mesh(engineGeo, darkMetalMat);
+            rightEngine.rotation.x = Math.PI / 2;
+            rightEngine.position.set(3.5, 0, 3);
+            shipGroup.add(rightEngine);
+
+            // Turbine blades glow
+            const turbineGeo = new THREE.RingGeometry(0.2, 0.7, 8);
+            const turbineMat = new THREE.MeshBasicMaterial({ color: 0x00aaff, side: THREE.DoubleSide });
+
+            const leftTurbine = new THREE.Mesh(turbineGeo, turbineMat);
+            leftTurbine.position.set(0, -1.8, 0); // Inside engine
+            leftTurbine.rotation.x = Math.PI / 2;
+            leftEngine.add(leftTurbine);
+
+            const rightTurbine = new THREE.Mesh(turbineGeo, turbineMat);
+            rightTurbine.position.set(0, -1.8, 0);
+            rightTurbine.rotation.x = Math.PI / 2;
+            rightEngine.add(rightTurbine);
+
+            // Engine Flames (Visuals linked to particles later)
             for (let i = 0; i < 2; i++) {
-                const engineBase = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.7, 0.8, 2, 16),
-                    bodyMat
-                );
-                engineBase.rotation.x = Math.PI / 2;
-                engineBase.position.set(i === 0 ? -3.5 : 3.5, -0.3, 4);
-                g.add(engineBase);
-
-                const flameGeo = new THREE.ConeGeometry(0.6, 4, 16);
+                // Main flame core
+                const flameGeo = new THREE.ConeGeometry(0.5, 6, 16);
                 const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
-                    color: 0x00f0ff,
+                    color: 0x00ffff,
                     transparent: true,
-                    opacity: 0.7
+                    opacity: 0.8,
+                    blending: THREE.AdditiveBlending
                 }));
                 flame.rotation.x = -Math.PI / 2;
-                flame.position.set(i === 0 ? -3.5 : 3.5, -0.3, 6);
+                // Position relative to shipGroup
+                flame.position.set(i === 0 ? -3.5 : 3.5, 0, 6.5);
                 engineFlames.push(flame);
-                g.add(flame);
+                shipGroup.add(flame);
 
-                // Glow externe
-                const glowGeo = new THREE.ConeGeometry(1, 6, 16);
+                // Outer Glow
+                const glowGeo = new THREE.ConeGeometry(1.2, 8, 16);
                 const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({
-                    color: 0x00f0ff,
+                    color: 0x0088ff,
                     transparent: true,
-                    opacity: 0.2
+                    opacity: 0.3,
+                    blending: THREE.AdditiveBlending
                 }));
                 glow.rotation.x = -Math.PI / 2;
-                glow.position.set(i === 0 ? -3.5 : 3.5, -0.3, 7);
+                glow.position.set(i === 0 ? -3.5 : 3.5, 0, 7);
                 engineFlames.push(glow);
-                g.add(glow);
+                shipGroup.add(glow);
             }
 
-            return g;
+            // 6. GREEBLES (Technical Details)
+            // Add vents and pipes
+            const ventGeo = new THREE.BoxGeometry(0.5, 0.1, 1);
+            for (let i = 0; i < 4; i++) {
+                const vent = new THREE.Mesh(ventGeo, darkMetalMat);
+                vent.position.set(0, 0.85, -1 + i * 0.8);
+                shipGroup.add(vent);
+            }
+
+            // Side pipes
+            const pipeGeo = new THREE.CylinderGeometry(0.1, 0.1, 8, 8);
+            const leftPipe = new THREE.Mesh(pipeGeo, hullMat);
+            leftPipe.rotation.x = Math.PI / 2;
+            leftPipe.position.set(-1, -0.5, 0);
+            shipGroup.add(leftPipe);
+
+            const rightPipe = new THREE.Mesh(pipeGeo, hullMat);
+            rightPipe.rotation.x = Math.PI / 2;
+            rightPipe.position.set(1, -0.5, 0);
+            shipGroup.add(rightPipe);
+
+            // Navigation Lights (Blinkers)
+            const navLightGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const redLight = new THREE.Mesh(navLightGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            redLight.position.set(-6, 0.2, -1); // Left Wingtip
+            shipGroup.add(redLight);
+
+            const greenLight = new THREE.Mesh(navLightGeo, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+            greenLight.position.set(6, 0.2, -1); // Right Wingtip
+            shipGroup.add(greenLight);
+
+            // Blink animation logic
+            setInterval(() => {
+                redLight.visible = !redLight.visible;
+                greenLight.visible = !greenLight.visible;
+            }, 1000);
+
+            return shipGroup;
         }
 
         function createHDPlanet(name, color, size, pos, atmosphereColor, missionDesc) {
@@ -1739,11 +2086,11 @@
             scene.add(group);
             planets.push(group);
 
-            // Ennemis gardiens
-            for (let i = 0; i < 3; i++) {
+            // Ennemis gardiens (Réduit à 1 pour la difficulté)
+            for (let i = 0; i < 1; i++) {
                 const enemy = createEnemyShip();
                 enemy.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 3000, (Math.random() - 0.5) * 3000, (Math.random() - 0.5) * 3000));
-                enemy.userData = { hp: 5, home: pos.clone(), lastShot: 0, planet: name };
+                enemy.userData = { hp: 20, home: pos.clone(), lastShot: 0, planet: name };
                 enemies.push(enemy);
                 scene.add(enemy);
             }
@@ -1760,27 +2107,125 @@
         }
 
         function startMission(planet) {
-            const missions = {
-                "MOLTEN-X": () => spawnCrystals(5, 0xff6600),
-                "NEPTUNE-PRO": () => spawnAntennes(3, 0x0088ff),
-                "KRYPTON-ELITE": () => spawnMonolithes(4, 0x44ff44)
+            planetEnvironment.children.forEach(c => {
+                if (c.userData && c.userData.type) planetEnvironment.remove(c);
+            });
+            missionObjects = [];
+            collectedItems = 0;
+            planetMissionStage = 0;
+
+            const missionData = {
+                "MOLTEN-X": {
+                    desc: "PHASE 1: Refroidir 3 évents de vapeur",
+                    spawn: () => spawnVents(3)
+                },
+                "NEPTUNE-PRO": {
+                    desc: "PHASE 1: Pirater 2 terminaux de données",
+                    spawn: () => spawnTerminals(2)
+                },
+                "KRYPTON-ELITE": {
+                    desc: "PHASE 1: Activer 3 pylônes d'énergie",
+                    spawn: () => spawnPylons(3)
+                }
             };
 
-            collectedItems = 0;
-            missions[planet.userData.name]();
+            const mission = missionData[planet.userData.name];
+            mission.spawn();
+
+            // QUEST STAGE OVERRIDES
+            if (questStage === 2 && planet.userData.name === "NEPTUNE-PRO") spawnCipher();
+            if (questStage === 3 && planet.userData.name === "MOLTEN-X") spawnPowerCores(5);
 
             currentMission = {
                 name: planet.userData.name,
-                desc: planet.userData.missionDesc,
+                desc: mission.desc,
                 total: missionObjects.length,
                 collected: 0
             };
 
-            document.getElementById('mission-panel').style.display = 'block';
-            document.getElementById('mission-desc').innerText = currentMission.desc;
-            updateMissionProgress();
+            document.getElementById('objective-title').innerText = "MISSION : " + currentMission.name;
+            document.getElementById('objective-desc').innerText = currentMission.desc;
+        }
 
-            showNotification(`🎯 MISSION : ${currentMission.desc}`);
+        function advancePlanetMission() {
+            planetMissionStage++;
+            missionObjects = [];
+            collectedItems = 0;
+
+            if (currentMission.name === "MOLTEN-X") {
+                currentMission.desc = "PHASE 2: Extraire le Noyau de Lave";
+                spawnCrystals(1, 0xff6600); // One big core
+            } else if (currentMission.name === "NEPTUNE-PRO") {
+                currentMission.desc = "PHASE 2: Détruire l'Antenne Maîtresse";
+                spawnAntennes(1, 0x0088ff);
+            } else if (currentMission.name === "KRYPTON-ELITE") {
+                currentMission.desc = "PHASE 2: Scanner le Monolithe Central";
+                spawnMonolithes(1, 0x44ff44);
+            }
+
+            currentMission.total = missionObjects.length;
+            document.getElementById('objective-desc').innerText = currentMission.desc;
+            showNotification("NOUVEL OBJECTIF : " + currentMission.desc);
+        }
+
+        function spawnVents(count) {
+            for (let i = 0; i < count; i++) {
+                const vent = new THREE.Mesh(
+                    new THREE.CylinderGeometry(40, 60, 10, 16),
+                    new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.9 })
+                );
+                const rx = (Math.random() - 0.5) * 5000;
+                const rz = (Math.random() - 0.5) * 5000;
+                const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
+                vent.position.set(rx, ry + 5, rz);
+                vent.userData.type = 'vent';
+                vent.userData.cooled = false;
+
+                // Steam particle effect
+                const steam = createParticleRing(vent.position, 0xffffff);
+                steam.scale.set(0.5, 2, 0.5);
+                vent.add(steam);
+                vent.userData.steam = steam;
+
+                planetEnvironment.add(vent);
+                missionObjects.push(vent);
+            }
+        }
+
+        function spawnTerminals(count) {
+            for (let i = 0; i < count; i++) {
+                const term = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(20, 40, 10), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                const screen = new THREE.Mesh(new THREE.PlaneGeometry(15, 10), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+                screen.position.set(0, 5, 5.1);
+                term.add(body, screen);
+
+                const rx = (Math.random() - 0.5) * 5000;
+                const rz = (Math.random() - 0.5) * 5000;
+                const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
+                term.position.set(rx, ry + 20, rz);
+                term.userData.type = 'terminal';
+                term.userData.hacked = false;
+                planetEnvironment.add(term);
+                missionObjects.push(term);
+            }
+        }
+
+        function spawnPylons(count) {
+            for (let i = 0; i < count; i++) {
+                const pylon = new THREE.Mesh(
+                    new THREE.CylinderGeometry(5, 5, 100),
+                    new THREE.MeshStandardMaterial({ color: 0x444444 })
+                );
+                const rx = (Math.random() - 0.5) * 5000;
+                const rz = (Math.random() - 0.5) * 5000;
+                const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
+                pylon.position.set(rx, ry + 50, rz);
+                pylon.userData.type = 'pylon';
+                pylon.userData.active = false;
+                planetEnvironment.add(pylon);
+                missionObjects.push(pylon);
+            }
         }
 
         function spawnCrystals(count, color) {
@@ -1920,18 +2365,21 @@
         function updateMissionProgress() {
             if (!currentMission) return;
             currentMission.collected = collectedItems;
-            const progress = (collectedItems / currentMission.total) * 100;
-            document.getElementById('mission-progress-bar').style.width = progress + '%';
 
+            // Check Phase completion
             if (collectedItems >= currentMission.total) {
-                setTimeout(() => {
-                    showNotification('🎉 MISSION ACCOMPLIE ! +500 PRIME');
-                    score += 500;
-                    document.getElementById('score').innerText = "PRIME : " + score;
-                    document.getElementById('mission-panel').style.display = 'none';
-                    currentMission = null;
-                    missionObjects = [];
-                }, 500);
+                if (planetMissionStage === 0) {
+                    advancePlanetMission();
+                } else {
+                    setTimeout(() => {
+                        showNotification('🎉 MISSION ACCOMPLIE ! +500 PRIME');
+                        credits += 500;
+                        document.getElementById('score').innerText = "CREDITS : " + credits;
+                        currentMission = null;
+                        missionObjects = [];
+                        document.getElementById('objective-desc').innerText = "EXPLORATION TERMINÉE";
+                    }, 500);
+                }
             }
         }
 
@@ -2032,8 +2480,8 @@
                     enemies.forEach(e => e.visible = true);
                     ship.scale.set(1, 1, 1);
                     ship.rotation.set(0, 0, 0);
-                    ship.position.copy(currentPlanetObj.position).add(new THREE.Vector3(0, 0, 1000));
-                    camera.position.copy(ship.position).add(new THREE.Vector3(0, 15, 65));
+                    ship.position.copy(currentPlanetObj.position).add(new THREE.Vector3(0, 0, 5000)); // x5
+                    camera.position.copy(ship.position).add(new THREE.Vector3(0, 75, 325)); // x5
                     shipRot.yaw = 0;
                     shipRot.pitch = 0;
                     document.getElementById('location').innerText = "ESPACE PROFOND";
@@ -2059,56 +2507,121 @@
         }
 
         function shoot() {
-            const laser = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 20), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
-            const dir = new THREE.Vector3(0, 0, -1);
-            if (currentMode === 'SPACE') {
-                laser.position.copy(ship.position);
-                laser.quaternion.copy(ship.quaternion);
-                dir.applyQuaternion(ship.quaternion);
-            } else {
-                laser.position.copy(camera.position);
-                laser.quaternion.copy(camera.quaternion);
-                dir.applyQuaternion(camera.quaternion);
+            // Determine laser count based on upgrade
+            const shotCount = (upgrades.laserLevel > 1) ? 2 : 1;
+            const laserColor = (upgrades.laserLevel > 1) ? 0xff00ff : 0x00f0ff; // Purple lasers for upgrade
+
+            for (let k = 0; k < shotCount; k++) {
+                // MASSIVE LASER BEAM
+                const laserGeo = new THREE.CylinderGeometry(3, 3, 600, 8);
+                laserGeo.rotateX(Math.PI / 2);
+                const laser = new THREE.Mesh(laserGeo, new THREE.MeshBasicMaterial({
+                    color: laserColor,
+                    blending: THREE.AdditiveBlending,
+                    transparent: true,
+                    opacity: 0.9
+                }));
+                const dir = new THREE.Vector3();
+
+                if (currentMode === 'SPACE') {
+                    // Parallax Correction: Shoot towards where the camera is looking
+                    const crosshairDist = 3000;
+                    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                    const targetPoint = camera.position.clone().add(camDir.multiplyScalar(crosshairDist));
+
+                    let offset = (k === 0) ? -15 : 15;
+                    if (shotCount === 1) offset = 0;
+                    const spawnPos = ship.position.clone().add(new THREE.Vector3(offset, 0, 0).applyQuaternion(ship.quaternion));
+
+                    laser.position.copy(spawnPos);
+
+                    // Direction is from Ship -> Target
+                    dir.subVectors(targetPoint, spawnPos).normalize();
+                    laser.lookAt(targetPoint);
+                } else {
+                    laser.position.copy(camera.position).add(new THREE.Vector3((k - 0.5) * 2, -1, 0).applyQuaternion(camera.quaternion));
+                    laser.quaternion.copy(camera.quaternion);
+                    dir.set(0, 0, -1).applyQuaternion(camera.quaternion);
+                }
+
+                scene.add(laser);
+
+                // Closure for laser movement
+                (function (l, d) {
+                    let frames = 0;
+                    function move() {
+                        l.position.addScaledVector(d, 400); // EXTREMELY FAST
+
+                        // Space Interceptors Collision
+                        if (currentMode === 'SPACE') {
+                            spaceEnemies.forEach((en, i) => {
+                                if (l.position.distanceTo(en.position) < 300) { // GENEROUS HITBOX (was 100)
+                                    en.userData.hp--;
+
+                                    // Visual Hit Effect
+                                    en.children.forEach(c => {
+                                        if (c.material && c.material.emissive) c.material.emissive.setHex(0xffffff);
+                                    });
+                                    setTimeout(() => {
+                                        en.children.forEach(c => {
+                                            if (c.material && c.material.emissive) c.material.emissive.setHex(0x330000);
+                                        });
+                                    }, 50);
+
+                                    if (en.userData.hp <= 0) {
+                                        credits += 300; // Bounty
+                                        document.getElementById('score').innerText = "CREDITS : " + credits;
+                                        // Explosion effect could be added here
+                                        scene.remove(en);
+                                        spaceEnemies.splice(i, 1);
+                                        // Notification removed per user request
+                                    }
+                                    scene.remove(l);
+                                    return;
+                                }
+                            });
+                        }
+
+                        // Ground Enemies Collision
+                        enemies.forEach((en, i) => {
+                            if (l.position.distanceTo(en.position) < 50) { // Tighter hitbox
+                                en.userData.hp--;
+                                if (en.userData.hp <= 0) {
+                                    credits += 50;
+                                    document.getElementById('score').innerText = "CREDITS : " + credits;
+                                    scene.remove(en);
+                                    enemies.splice(i, 1);
+                                }
+                                scene.remove(l);
+                                return;
+                            }
+                        });
+
+                        missionObjects.forEach((obj, i) => {
+                            if (obj.userData.type === 'destroyable' && l.position.distanceTo(obj.position) < 200) {
+                                obj.userData.hp--;
+                                if (obj.userData.hp <= 0) {
+                                    planetEnvironment.remove(obj);
+                                    missionObjects.splice(i, 1);
+                                    collectedItems++;
+                                    credits += 150;
+                                    document.getElementById('score').innerText = "CREDITS : " + credits;
+                                    updateMissionProgress();
+                                    showNotification('💥 ANTENNE DÉTRUITE !');
+
+                                    // 50% chance of ambush
+                                    if (Math.random() < 0.5) spawnAmbush(obj.position);
+                                }
+                                scene.remove(l);
+                                return;
+                            }
+                        });
+
+                        if (frames++ < 60) requestAnimationFrame(move);
+                        else scene.remove(l);
+                    } move();
+                })(laser, dir);
             }
-            scene.add(laser);
-            let frames = 0;
-            function move() {
-                laser.position.addScaledVector(dir, 50);
-
-                enemies.forEach((en, i) => {
-                    if (laser.position.distanceTo(en.position) < 100) {
-                        en.userData.hp--;
-                        if (en.userData.hp <= 0) {
-                            score += 50;
-                            document.getElementById('score').innerText = "PRIME : " + score;
-                            scene.remove(en);
-                            enemies.splice(i, 1);
-                        }
-                        scene.remove(laser);
-                        return;
-                    }
-                });
-
-                missionObjects.forEach((obj, i) => {
-                    if (obj.userData.type === 'destroyable' && laser.position.distanceTo(obj.position) < 100) {
-                        obj.userData.hp--;
-                        if (obj.userData.hp <= 0) {
-                            planetEnvironment.remove(obj);
-                            missionObjects.splice(i, 1);
-                            collectedItems++;
-                            score += 150;
-                            document.getElementById('score').innerText = "PRIME : " + score;
-                            updateMissionProgress();
-                            showNotification('💥 ANTENNE DÉTRUITE !');
-                        }
-                        scene.remove(laser);
-                        return;
-                    }
-                });
-
-                if (frames++ < 40) requestAnimationFrame(move);
-                else scene.remove(laser);
-            } move();
         }
 
         function enemyShoot(enemy) {
@@ -2122,8 +2635,8 @@
             function move() {
                 laser.position.addScaledVector(dir, 40);
 
-                if (currentMode === 'SPACE' && laser.position.distanceTo(ship.position) < 50) {
-                    takeDamage(5);
+                if (currentMode === 'SPACE' && laser.position.distanceTo(ship.position) < 250) { // x5 hitbox
+                    takeDamage(15); // Damage 5 -> 15 (Hardcore)
                     scene.remove(laser);
                     return;
                 }
@@ -2147,10 +2660,10 @@
         function tryInteract() {
             if (currentMode === 'SPACE') {
                 planets.forEach(p => {
-                    if (ship.position.distanceTo(p.position) < p.userData.size + 800) startLanding(p);
+                    if (ship.position.distanceTo(p.position) < p.userData.size + 4000) startLanding(p); // x5 interact dist
                 });
             } else {
-                if (camera.position.distanceTo(ship.position) < 150) {
+                if (camera.position.distanceTo(ship.position) < 750) { // x5 interact dist
                     exitPlanet();
                 } else {
                     missionObjects.forEach(obj => {
@@ -2161,6 +2674,9 @@
                             document.getElementById('score').innerText = "PRIME : " + score;
                             updateMissionProgress();
                             showNotification('🔍 MONOLITHE SCANNÉ !');
+
+                            // 50% chance of ambush
+                            if (Math.random() < 0.5) spawnAmbush(ship.position);
 
                             obj.traverse(child => {
                                 if (child.isMesh && child.material.emissive) {
@@ -2180,7 +2696,8 @@
 
             // Skip game logic during cinematics
             if (isInCinematic || !gameStarted) {
-                renderer.render(scene, camera);
+                if (composer) composer.render();
+                else renderer.render(scene, camera);
                 return;
             }
 
@@ -2196,9 +2713,25 @@
                         f.scale.setScalar(scale + Math.sin(time * 10 + i) * 0.2);
                     });
 
-                    camera.position.lerp(ship.position.clone().add(new THREE.Vector3(0, 15, 65).applyQuaternion(ship.quaternion)), 0.1);
-                    camera.lookAt(ship.position);
+                    // Camera follows ship but looks ahead (Third Person Shooter Style)
+                    const camOffset = new THREE.Vector3(0, 150, 450).applyQuaternion(ship.quaternion); // Higher and further back
+                    camera.position.lerp(ship.position.clone().add(camOffset), 0.1);
 
+                    // Look at a point far in front of the ship to clear the view
+                    const lookTarget = ship.position.clone().add(new THREE.Vector3(0, 20, -3000).applyQuaternion(ship.quaternion));
+                    camera.lookAt(lookTarget);
+
+                    // UPDATE SPACE COMBAT
+                    updateSpaceEnemies(delta, time);
+                    drawRadar();
+                    updateQuest();
+
+                    // HUD: Ship Integrity
+                    const shipHpPercent = Math.max(0, (shipHealth / maxShipHealth) * 100);
+                    document.getElementById('health-bar').style.width = shipHpPercent + "%";
+                    document.getElementById('health-bar').style.backgroundColor = "#00aaff"; // Blue for Hull
+
+                    // Simple interaction prompt for planets
                     planets.forEach(p => {
                         p.rotation.y += 0.001;
                         p.userData.clouds.rotation.y += 0.0015;
@@ -2209,6 +2742,7 @@
                         }
                     });
 
+                    // Keep ground enemies in stasis/idle
                     enemies.forEach(en => {
                         const distToPlayer = en.position.distanceTo(ship.position);
                         const distToHome = en.position.distanceTo(en.userData.home);
@@ -2248,7 +2782,8 @@
                     checkMissionObjectInteraction();
                 }
             }
-            renderer.render(scene, camera);
+            if (composer) composer.render();
+            else renderer.render(scene, camera);
         }
 
         init();
@@ -2256,7 +2791,658 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) composer.setSize(window.innerWidth, window.innerHeight);
         };
+
+        function createTitanShip() {
+            const shipGroup = new THREE.Group();
+
+            // --- MATERIALS ---
+            const metalTex = createMetallicTexture();
+            const hullMat = new THREE.MeshStandardMaterial({
+                color: 0xaaaaaa,
+                map: metalTex,
+                roughness: 0.4,
+                metalness: 0.8,
+                envMapIntensity: 1.2
+            });
+
+            const darkMat = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                map: metalTex,
+                roughness: 0.6,
+                metalness: 0.5
+            });
+
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0x00aaff,
+                metalness: 0.1,
+                roughness: 0.0,
+                transmission: 0.8,
+                transparent: true,
+                opacity: 0.5
+            });
+
+            // SCALE FACTOR = 5
+
+            // --- FUSELAGE ---
+            const bodyGeo = new THREE.CylinderGeometry(6.0, 4.0, 30, 32);
+            bodyGeo.rotateX(Math.PI / 2);
+            const body = new THREE.Mesh(bodyGeo, hullMat);
+            shipGroup.add(body);
+
+            const noseGeo = new THREE.ConeGeometry(4.0, 20, 32);
+            noseGeo.rotateX(-Math.PI / 2);
+            const nose = new THREE.Mesh(noseGeo, hullMat);
+            nose.position.z = -25;
+            shipGroup.add(nose);
+
+            const rearGeo = new THREE.BoxGeometry(15, 7.5, 20);
+            const rear = new THREE.Mesh(rearGeo, darkMat);
+            rear.position.z = 20;
+            shipGroup.add(rear);
+
+            // --- COCKPIT ---
+            const cockpitGeo = new THREE.CapsuleGeometry(4.5, 12, 4, 16);
+            cockpitGeo.rotateX(Math.PI / 2);
+            const cockpit = new THREE.Mesh(cockpitGeo, glassMat);
+            cockpit.position.set(0, 2.5, -5);
+            cockpit.scale.set(1, 0.7, 1);
+            shipGroup.add(cockpit);
+
+            // --- WINGS ---
+            const wingGeo = new THREE.BoxGeometry(50, 1.0, 25);
+            const wings = new THREE.Mesh(wingGeo, hullMat);
+            wings.position.set(0, 0, 5);
+            shipGroup.add(wings);
+
+            const tipGeo = new THREE.BoxGeometry(1.0, 7.5, 15);
+            const leftTip = new THREE.Mesh(tipGeo, darkMat);
+            leftTip.position.set(-25, 2.5, 5);
+            shipGroup.add(leftTip);
+
+            const rightTip = new THREE.Mesh(tipGeo, darkMat);
+            rightTip.position.set(25, 2.5, 5);
+            shipGroup.add(rightTip);
+
+            const tailGeo = new THREE.BoxGeometry(1.0, 20, 15);
+            const tail = new THREE.Mesh(tailGeo, hullMat);
+            tail.position.set(0, 10, 22.5);
+            shipGroup.add(tail);
+
+            // --- ENGINES ---
+            const engineGeo = new THREE.CylinderGeometry(4.0, 6.0, 20, 32);
+            engineGeo.rotateX(Math.PI / 2);
+
+            const leftEngine = new THREE.Mesh(engineGeo, darkMat);
+            leftEngine.position.set(-15, 0, 15);
+            shipGroup.add(leftEngine);
+
+            const rightEngine = new THREE.Mesh(engineGeo, darkMat);
+            rightEngine.position.set(15, 0, 15);
+            shipGroup.add(rightEngine);
+
+            // Engine Flames
+            window.engineFlames = [];
+            for (let i = 0; i < 2; i++) {
+                const flame = new THREE.Mesh(new THREE.ConeGeometry(2.5, 35, 16), new THREE.MeshBasicMaterial({
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.8
+                }));
+                flame.rotation.x = Math.PI / 2;
+                flame.position.set(i === 0 ? -15 : 15, 0, 32.5);
+                shipGroup.add(flame);
+                window.engineFlames.push(flame);
+            }
+
+            // Navigation Lights
+            const navLightGeo = new THREE.SphereGeometry(1.0, 16, 16);
+            const redLight = new THREE.Mesh(navLightGeo, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            redLight.position.set(-30, 2.0, 0);
+            shipGroup.add(redLight);
+
+            const greenLight = new THREE.Mesh(navLightGeo, new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+            greenLight.position.set(30, 2.0, 0);
+            shipGroup.add(greenLight);
+
+            setInterval(() => {
+                redLight.visible = !redLight.visible;
+                greenLight.visible = !greenLight.visible;
+            }, 1000);
+
+            return shipGroup;
+        }
+
+        // --- GAMEPLAY V2 LOGIC ---
+
+        // SHOP SYSTEM
+        function toggleShop() {
+            shopOpen = !shopOpen;
+            const ui = document.getElementById('shop-ui');
+            if (shopOpen) {
+                ui.style.display = 'block';
+                document.exitPointerLock();
+                populateShop();
+            } else {
+                ui.style.display = 'none';
+                if (!isLocked) document.body.requestPointerLock();
+            }
+        }
+
+        function populateShop() {
+            const items = [
+                { id: 'laser', name: 'PLASMA OVERCHARGE', cost: 500, desc: 'Increases laser damage & count', level: upgrades.laserLevel },
+                { id: 'damage', name: 'TITAN PLATING', cost: 800, desc: 'Increases Ship Hull HP (+500)', level: upgrades.armor },
+                { id: 'speed', name: 'THRUSTER BOOST', cost: 400, desc: 'Increases flight speed by 20%', level: upgrades.speed }
+            ];
+
+            const grid = document.getElementById('shop-items');
+            grid.innerHTML = '';
+            document.getElementById('shop-credits').innerText = credits;
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.style.border = '1px solid #333';
+                div.style.padding = '10px';
+                div.style.background = 'rgba(0,0,0,0.5)';
+
+                div.innerHTML = `
+                    <h3 style="margin: 0; color: #00f0ff;">${item.name} (Lvl ${item.level})</h3>
+                    <p style="font-size: 0.8em; color: #ccc;">${item.desc}</p>
+                    <button onclick="buyUpgrade('${item.id}', ${item.cost})" style="width: 100%; padding: 5px; background: #ffaa00; border: none; cursor: pointer; font-weight: bold; margin-top: 5px;">
+                        BUY (${item.cost} CR)
+                    </button>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        window.buyUpgrade = function (type, cost) {
+            if (credits >= cost) {
+                credits -= cost;
+                document.getElementById('shop-credits').innerText = credits;
+                document.getElementById('score').innerText = "CREDITS : " + credits; // Update Main HUD
+
+                if (type === 'laser') upgrades.laserLevel++;
+                else if (type === 'damage') {
+                    upgrades.armor++;
+                    maxShipHealth += 500;
+                    shipHealth += 500;
+                    showNotification("ARMOR UPGRADED!");
+                }
+                else if (type === 'speed') upgrades.speed++;
+
+                populateShop(); // Refresh UI
+                showNotification("UPGRADE PURCHASED!");
+            } else {
+                alert("NOT ENOUGH CREDITS!");
+            }
+        };
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'KeyB') toggleShop();
+        });
+
+        // SPACE COMBAT SYSTEM
+        function spawnSpaceEnemy() {
+            if (currentMode !== 'SPACE' || spaceEnemies.length > 5) return;
+
+            // Enemy Ship Geometry (Simple but aggressive)
+            const enemyGroup = new THREE.Group();
+
+            // NEW PREDATOR CLASS DESIGN
+            const matDark = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.9 });
+            const matRed = new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.3, metalness: 0.6, emissive: 0x330000 });
+            const matGlow = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+            // Main Hull - Sleek angular shape
+            const hullGeo = new THREE.ConeGeometry(8, 60, 4);
+            hullGeo.rotateX(Math.PI / 2);
+            hullGeo.rotateZ(Math.PI / 4); // Diamond cross-section
+            const hull = new THREE.Mesh(hullGeo, matDark);
+            enemyGroup.add(hull);
+
+            // Cockpit
+            const cockpit = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 15), matRed);
+            cockpit.position.set(0, 5, 0);
+            enemyGroup.add(cockpit);
+
+            // Forward Swept Wings
+            const wingShape = new THREE.Shape();
+            wingShape.moveTo(0, 0);
+            wingShape.lineTo(20, -10);
+            wingShape.lineTo(40, 10); // Tip
+            wingShape.lineTo(10, 5);
+            wingShape.lineTo(0, 0);
+
+            const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 2, bevelEnabled: false });
+            wingGeo.rotateX(Math.PI / 2);
+
+            const leftWing = new THREE.Mesh(wingGeo, matDark);
+            leftWing.position.set(-5, 0, 5);
+            leftWing.rotation.z = 0.2;
+            enemyGroup.add(leftWing);
+
+            const rightWing = new THREE.Mesh(wingGeo.clone(), matDark);
+            rightWing.position.set(5, 0, 5);
+            rightWing.rotation.z = -0.2;
+            rightWing.scale.x = -1; // Mirror
+            enemyGroup.add(rightWing);
+
+            // Weapon Pods (Guns)
+            const gunGeo = new THREE.CylinderGeometry(1, 1, 30);
+            gunGeo.rotateX(Math.PI / 2);
+            const leftGun = new THREE.Mesh(gunGeo, matRed);
+            leftGun.position.set(-25, 0, 10);
+            enemyGroup.add(leftGun);
+
+            const rightGun = new THREE.Mesh(gunGeo, matRed);
+            rightGun.position.set(25, 0, 10);
+            enemyGroup.add(rightGun);
+
+            // Engine glow
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(6), matGlow);
+            glow.position.z = 30;
+            glow.scale.set(1, 0.5, 1);
+            enemyGroup.add(glow);
+
+            // Spawn random distance
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 4000 + Math.random() * 2000;
+            enemyGroup.position.set(
+                ship.position.x + Math.cos(angle) * dist,
+                ship.position.y + (Math.random() - 0.5) * 1000,
+                ship.position.z + Math.sin(angle) * dist
+            );
+
+            enemyGroup.userData = { hp: 5, lastShot: 0 };
+            scene.add(enemyGroup);
+            spaceEnemies.push(enemyGroup);
+
+            // Removed showNotification here as requested - Radar will show them
+        }
+
+        const radarCanvas = document.getElementById('radar-canvas');
+        const radarCtx = radarCanvas.getContext('2d');
+
+        function drawRadar() {
+            if (isInCinematic) {
+                document.getElementById('radar-container').style.display = 'none';
+                return;
+            }
+            document.getElementById('radar-container').style.display = 'block';
+
+            const w = radarCanvas.width;
+            const h = radarCanvas.height;
+            const center = { x: w / 2, y: h / 2 };
+
+            // Adaptive Range: 8000 in Space, 2000 on Planets
+            const range = (currentMode === 'SPACE') ? 8000 : 3000;
+
+            // Clear
+            radarCtx.clearRect(0, 0, w, h);
+
+            // Background circles
+            radarCtx.strokeStyle = (currentMode === 'SPACE') ? "rgba(0, 240, 255, 0.2)" : "rgba(100, 255, 100, 0.2)";
+            radarCtx.lineWidth = 1;
+            for (let i = 1; i <= 3; i++) {
+                radarCtx.beginPath();
+                radarCtx.arc(center.x, center.y, (w / 2) * (i / 3), 0, Math.PI * 2);
+                radarCtx.stroke();
+            }
+
+            // Crosshair
+            radarCtx.strokeStyle = (currentMode === 'SPACE') ? "#00f0ff" : "#44ff44";
+            radarCtx.beginPath();
+            radarCtx.moveTo(center.x - 10, center.y); radarCtx.lineTo(center.x + 10, center.y);
+            radarCtx.moveTo(center.x, center.y - 10); radarCtx.lineTo(center.x, center.y + 10);
+            radarCtx.stroke();
+
+            // Draw Entities Helper
+            const drawDot = (pos, color, size = 3) => {
+                const playerPos = (currentMode === 'SPACE') ? ship.position : camera.position;
+                const playerYaw = (currentMode === 'SPACE') ? shipRot.yaw : playerRot.yaw;
+
+                const relX = pos.x - playerPos.x;
+                const relZ = pos.z - playerPos.z;
+
+                // Rotate based on player yaw
+                const cos = Math.cos(-playerYaw);
+                const sin = Math.sin(-playerYaw);
+                const rotX = relX * cos - relZ * sin;
+                const rotZ = relX * sin + relZ * cos;
+
+                if (Math.abs(rotX) < range && Math.abs(rotZ) < range) {
+                    const px = center.x + (rotX / range) * (w / 2);
+                    const py = center.y + (rotZ / range) * (h / 2);
+
+                    radarCtx.fillStyle = color;
+                    radarCtx.beginPath();
+                    radarCtx.arc(px, py, size, 0, Math.PI * 2);
+                    radarCtx.fill();
+
+                    if (size > 3) { // Glow for important objects
+                        radarCtx.shadowBlur = 8;
+                        radarCtx.shadowColor = color;
+                        radarCtx.stroke();
+                        radarCtx.shadowBlur = 0;
+                    }
+                }
+            };
+
+            if (currentMode === 'SPACE') {
+                // Draw Space Objects
+                planets.forEach(p => drawDot(p.position, p.userData.color || "#ffffff", 6));
+                spaceEnemies.forEach(e => drawDot(e.position, "#ff0000", 3));
+                if (warpGate) drawDot(warpGate.position, "#ffaa00", 8);
+            } else {
+                // Draw Planet Objectives (Gems, Towers, Monoliths)
+                missionObjects.forEach(obj => {
+                    let dotColor = "#ffff00"; // Default yellow for objectives
+                    if (obj.userData.type === 'collectible') dotColor = "#ffaa00";
+                    if (obj.userData.type === 'destroyable') dotColor = "#ff3300";
+                    if (obj.userData.type === 'scannable') dotColor = "#00ff00";
+
+                    drawDot(obj.position, dotColor, 4);
+                });
+                // Also show enemies on planet radar (Red)
+                enemies.forEach(e => {
+                    if (e.visible) drawDot(e.position, "#ff0000", 2);
+                });
+            }
+
+            // Direction indicator
+            radarCtx.strokeStyle = radarCtx.strokeStyle;
+            radarCtx.beginPath();
+            radarCtx.moveTo(center.x, center.y);
+            radarCtx.lineTo(center.x, center.y - 30);
+            radarCtx.stroke();
+        }
+
+        function updateQuest() {
+            const stage = QUEST_STAGES[questStage];
+            if (!stage) return;
+
+            // Check completion
+            let completed = false;
+            switch (questStage) {
+                case 0: if (credits >= stage.goal) completed = true; break;
+                case 1: if (upgrades.armor > 1) completed = true; break;
+                case 2: if (specialItems.cipherFound) completed = true; break;
+                case 3: if (specialItems.powerCores >= stage.goal) completed = true; break;
+                case 4: if (credits >= stage.goal && ship.position.distanceTo(warpGate.position) < 1000) {
+                    specialItems.gateRepaired = true;
+                    completed = true;
+                } break;
+            }
+
+            if (completed) {
+                questStage++;
+                showNotification("MISSION MISE À JOUR : " + stage.title);
+                if (questStage >= QUEST_STAGES.length) {
+                    showNotification("ODYSSÉE TERMINÉE ! TOUT EST POSSIBLE.");
+                    // Optional: Final celebration cinematic
+                }
+            }
+
+            // Update UI
+            document.getElementById('objective-title').innerText = "OBJECTIF " + (questStage + 1) + " : " + stage.title;
+            document.getElementById('objective-desc').innerText = stage.desc;
+
+            // Handle special logic
+            if (questStage === 4 && !warpGate) {
+                createWarpGate();
+            }
+        }
+
+        function createWarpGate() {
+            const gateGroup = new THREE.Group();
+            const ringGeo = new THREE.TorusGeometry(1200, 100, 16, 100); // Massive gate
+            const ringMat = new THREE.MeshStandardMaterial({
+                color: 0x444444,
+                metalness: 0.9,
+                roughness: 0.1,
+                emissive: 0x00f0ff,
+                emissiveIntensity: 0.5
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            gateGroup.add(ring);
+
+            // Event horizon effect
+            const coreGeo = new THREE.SphereGeometry(1100, 32, 32);
+            const coreMat = new THREE.MeshBasicMaterial({
+                color: 0x001133,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            core.scale.z = 0.1;
+            gateGroup.add(core);
+
+            gateGroup.position.set(5000, 0, -25000);
+            scene.add(gateGroup);
+            warpGate = gateGroup;
+
+            showNotification("⚠️ STRUCTURE MASSIVE DÉTECTÉE DANS LE SECTEUR KAPPA");
+        }
+
+        function updateSpaceEnemies(delta, time) {
+            spaceEnemies.forEach((en, i) => {
+                // Chase Player
+                const dir = new THREE.Vector3().subVectors(ship.position, en.position).normalize();
+                en.position.addScaledVector(dir, 600 * delta); // Speed
+                en.lookAt(ship.position);
+
+                // Shoot at player
+                if (time - en.userData.lastShot > 2.0 && en.position.distanceTo(ship.position) < 3000) {
+                    en.userData.lastShot = time;
+                    enemySpaceShoot(en);
+                }
+            });
+
+            // Random spawns - Reduced frequency (0.005 -> 0.001)
+            if (Math.random() < 0.001) spawnSpaceEnemy();
+        }
+
+        function enemySpaceShoot(enemy) {
+            const laser = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 100), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+            laser.geometry.rotateX(Math.PI / 2);
+            laser.position.copy(enemy.position);
+            laser.lookAt(ship.position);
+            scene.add(laser);
+
+            const dir = new THREE.Vector3().subVectors(ship.position, enemy.position).normalize();
+
+            let frames = 0;
+            function move() {
+                laser.position.addScaledVector(dir, 100); // Fast lasers
+                if (currentMode === 'SPACE' && laser.position.distanceTo(ship.position) < 200) { // Hitbox
+                    takeShipDamage(50);
+                    scene.remove(laser);
+                    return;
+                }
+                if (frames++ < 100) requestAnimationFrame(move);
+                else scene.remove(laser);
+            } move();
+        }
+
+        function takeShipDamage(amount) {
+            shipHealth -= amount;
+            // Visual feedback (screen shake or red flash could be added here)
+            document.getElementById('damage-overlay').style.backgroundColor = "rgba(255,0,0,0.5)";
+            setTimeout(() => { document.getElementById('damage-overlay').style.backgroundColor = "transparent"; }, 200);
+
+            if (shipHealth <= 0) {
+                alert("CRITICAL FAILURE! SHIP DESTROYED.");
+                location.reload();
+            }
+        }
+
+        function spawnAmbush(pos) {
+            showNotification("⚠️ AMBUSH DETECTED! ELITE SENTINELS INCOMING!");
+
+            for (let i = 0; i < 3; i++) {
+                const group = new THREE.Group();
+                // Elite Appearance: Black and Red, Spiky
+                const hull = new THREE.Mesh(
+                    new THREE.ConeGeometry(2, 6, 4),
+                    new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.9 })
+                );
+                hull.rotateX(Math.PI / 2);
+
+                const spikes = new THREE.Mesh(
+                    new THREE.BoxGeometry(4, 1, 4),
+                    new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 })
+                );
+
+                group.add(hull, spikes);
+
+                // Spawn nearby
+                const angle = Math.random() * Math.PI * 2;
+                group.position.set(
+                    pos.x + Math.cos(angle) * 50,
+                    pos.y + 20,
+                    pos.z + Math.sin(angle) * 50
+                );
+
+                group.userData = { hp: 50, home: group.position.clone(), lastShot: 0 }; // Elite HP
+                scene.add(group);
+                enemies.push(group);
+            }
+        }
+
+        function spawnCipher() {
+            const cipher = new THREE.Mesh(
+                new THREE.IcosahedronGeometry(20, 0),
+                new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffff00, emissiveIntensity: 1 })
+            );
+            cipher.position.set((Math.random() - 0.5) * 2000, 100, (Math.random() - 0.5) * 2000);
+            cipher.userData.type = 'cipher';
+            planetEnvironment.add(cipher);
+            missionObjects.push(cipher);
+            showNotification("DÉTECTION : CHIFFRE ANCIEN DANS LA ZONE !");
+        }
+
+        function spawnPowerCores(count) {
+            for (let i = 0; i < count; i++) {
+                const core = new THREE.Mesh(
+                    new THREE.BoxGeometry(30, 30, 30),
+                    new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 1 })
+                );
+                core.position.set((Math.random() - 0.5) * 4000, 50, (Math.random() - 0.5) * 4000);
+                core.userData.type = 'powerCore';
+                planetEnvironment.add(core);
+                missionObjects.push(core);
+            }
+            showNotification(`DÉTECTION : ${count} NOYAUX D'ÉNERGIE DESSÉMINÉS !`);
+        }
+
+        function tryInteract() {
+            if (isInCinematic) return;
+
+            if (currentMode === 'SPACE') {
+                // Check if near planet
+                planets.forEach(p => {
+                    if (ship.position.distanceTo(p.position) < p.userData.size + 1000) {
+                        startLanding(p);
+                    }
+                });
+
+                // Check Warp Gate
+                if (warpGate && questStage === 4) {
+                    if (ship.position.distanceTo(warpGate.position) < 1500) {
+                        if (credits >= 5000) {
+                            credits -= 5000;
+                            specialItems.gateRepaired = true;
+                            showNotification("PORTE ACTIVÉE ! SAUT QUANTIQUE EN COURS...");
+                            // Final Victory logic
+                            setTimeout(() => {
+                                showNotification("VICTOIRE ! VOUS AVEZ REJOINT LA TERRE.");
+                                alert("MISSION ACCOMPLIE ! Félicitations Commandant Ahmed.");
+                                location.reload();
+                            }, 3000);
+                        } else {
+                            showNotification("PAS ASSEZ DE CRÉDITS (5000 REQUIS)");
+                        }
+                    }
+                }
+            } else {
+                // Planet Mode
+                let interacted = false;
+                missionObjects.forEach((obj, index) => {
+                    const dist = camera.position.distanceTo(obj.position);
+                    if (dist < 300) {
+                        interacted = true;
+
+                        // NEW INTERACTIONS
+                        if (obj.userData.type === 'vent' && !obj.userData.cooled) {
+                            obj.userData.cooled = true;
+                            obj.remove(obj.userData.steam);
+                            obj.material.color.set(0x111111);
+                            showNotification("ÉVENT REFROIDI !");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'terminal' && !obj.userData.hacked) {
+                            obj.userData.hacked = true;
+                            obj.children[1].material.color.set(0xff0000); // Red screen
+                            showNotification("TERMINAL PIRATÉ !");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'pylon' && !obj.userData.active) {
+                            obj.userData.active = true;
+                            obj.material.emissive = new THREE.Color(0x00f0ff);
+                            obj.material.emissiveIntensity = 2;
+                            showNotification("PYLÔNE ACTIVÉ !");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                        // QUEST ITEMS
+                        else if (obj.userData.type === 'cipher' && questStage === 2) {
+                            specialItems.cipherFound = true;
+                            showNotification("CHIFFRE RÉCUPÉRÉ !");
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            collectedItems++;
+                            updateMissionProgress();
+                            updateQuest();
+                        }
+                        else if (obj.userData.type === 'powerCore' && questStage === 3) {
+                            specialItems.powerCores++;
+                            showNotification(`NOYAU RÉCUPÉRÉ (${specialItems.powerCores}/5)`);
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            collectedItems++;
+                            updateMissionProgress();
+                            updateQuest();
+                        }
+                        // LEGACY/MISC
+                        else if (obj.userData.type === 'collectible') {
+                            collectedItems++;
+                            credits += 100;
+                            showNotification("OBJET RÉCUPÉRÉ");
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'scannable' && !obj.userData.scanned) {
+                            obj.userData.scanned = true;
+                            showNotification("SCAN TERMINÉ");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                    }
+                });
+
+                // Exit planet check if no interaction
+                if (!interacted && camera.position.length() > 6000) {
+                    exitPlanet();
+                }
+            }
+        }
     </script>
 </body>
 
