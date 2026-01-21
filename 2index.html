@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odyssée Spatiale Pro - Ahmed Edition Ultime</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00f0ff;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
+            z-index: 10;
+        }
+        .hud-panel {
+            background: rgba(0, 10, 20, 0.9);
+            backdrop-filter: blur(15px);
+            padding: 15px;
+            border-left: 4px solid #00f0ff;
+            border-radius: 0 10px 10px 0;
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+        }
+        #health-container {
+            width: 220px;
+            height: 14px;
+            background: rgba(255,0,0,0.1);
+            margin-top: 10px;
+            border: 1px solid rgba(255, 50, 50, 0.5);
+        }
+        #health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff4d4d);
+            box-shadow: 0 0 15px #ff0000;
+            transition: width 0.2s ease-out;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 44px;
+            border: 2px solid rgba(0, 240, 255, 0.4);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #crosshair::before { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: #00f0ff; border-radius: 50%; transform: translate(-50%, -50%); }
+        #prompt { 
+            position: absolute; 
+            top: 80%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            color: #fff; 
+            font-weight: bold; 
+            font-size: 1.4rem; 
+            text-shadow: 0 0 15px #00f0ff; 
+            background: rgba(0,0,0,0.7);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 1px solid rgba(0, 240, 255, 0.5);
+        }
+        #fade { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; opacity: 0; pointer-events: none; z-index: 200; transition: opacity 0.8s; }
+        #damage-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; transition: background 0.1s; z-index: 99;
+        }
+        #mission-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 170, 0, 0.15);
+            backdrop-filter: blur(15px);
+            padding: 15px;
+            border-right: 4px solid #ffaa00;
+            border-radius: 10px 0 0 10px;
+            border: 1px solid rgba(255, 170, 0, 0.3);
+            color: #ffaa00;
+            max-width: 300px;
+            display: none;
+            z-index: 10;
+        }
+        .mission-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.7);
+        }
+        .mission-desc {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-bottom: 8px;
+        }
+        .mission-progress {
+            width: 100%;
+            height: 8px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .mission-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ffaa00, #ffdd00);
+            box-shadow: 0 0 10px #ffaa00;
+            transition: width 0.3s;
+        }
+        #notification {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 240, 255, 0.2);
+            backdrop-filter: blur(15px);
+            padding: 30px 50px;
+            border-radius: 20px;
+            border: 2px solid #00f0ff;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            z-index: 300;
+            box-shadow: 0 0 40px rgba(0, 240, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="damage-overlay"></div>
+    <div id="hud">
+        <div class="hud-panel">
+            <div id="gameMode" style="font-weight: bold; letter-spacing: 3px; color: #00f0ff;">COMMANDANT AHMED</div>
+            <div id="location" style="opacity: 0.9; font-size: 0.85rem; margin-top: 4px;">SYNCHRONISATION...</div>
+            <div id="questStatus" style="color: #ffaa00; font-weight: bold; margin-top: 8px; font-size: 0.8rem;">SCAN SECTEUR</div>
+            <div id="health-container"><div id="health-bar"></div></div>
+            <div id="score" style="margin-top: 10px; color: #ffaa00; font-size: 14px;">PRIME : 0</div>
+        </div>
+    </div>
+
+    <div id="mission-panel">
+        <div class="mission-title">🎯 MISSION ACTIVE</div>
+        <div class="mission-desc" id="mission-desc"></div>
+        <div class="mission-progress">
+            <div class="mission-progress-bar" id="mission-progress-bar"></div>
+        </div>
+    </div>
+
+    <div id="notification"></div>
+    <div id="prompt"></div>
+    <div id="crosshair"></div>
+    <div id="fade"></div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let isLocked = false, currentMode = 'SPACE';
+        let ship, stars, currentPlanetObj, planetEnvironment, engineFlames = [];
+        let planets = [];
+        let enemies = [];
+        let health = 100, score = 0;
+        let keys = {};
+        const shipRot = { yaw: 0, pitch: 0 };
+        const playerRot = { yaw: 0, pitch: 0 };
+        
+        // Système de missions
+        let currentMission = null;
+        let missionObjects = [];
+        let collectedItems = 0;
+
+        // --- TEXTURES ULTRA HD PROCÉDURALES ---
+        function createMetallicTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2048;
+            canvas.height = 2048;
+            const ctx = canvas.getContext('2d');
+            
+            // Base métallique
+            const gradient = ctx.createLinearGradient(0, 0, 2048, 2048);
+            gradient.addColorStop(0, '#666666');
+            gradient.addColorStop(0.5, '#999999');
+            gradient.addColorStop(1, '#555555');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 2048, 2048);
+            
+            // Rayures métalliques
+            for(let i = 0; i < 200; i++) {
+                ctx.strokeStyle = `rgba(${Math.random() > 0.5 ? 200 : 100}, ${Math.random() > 0.5 ? 200 : 100}, ${Math.random() > 0.5 ? 200 : 100}, 0.3)`;
+                ctx.lineWidth = Math.random() * 3;
+                ctx.beginPath();
+                ctx.moveTo(Math.random() * 2048, Math.random() * 2048);
+                ctx.lineTo(Math.random() * 2048, Math.random() * 2048);
+                ctx.stroke();
+            }
+            
+            // Reflets
+            for(let i = 0; i < 50; i++) {
+                const grd = ctx.createRadialGradient(
+                    Math.random() * 2048, Math.random() * 2048, 0,
+                    Math.random() * 2048, Math.random() * 2048, Math.random() * 300
+                );
+                grd.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+                grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = grd;
+                ctx.fillRect(0, 0, 2048, 2048);
+            }
+            
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createPlanetTexture(baseColor, isGround = false) {
+            const size = isGround ? 2048 : 1024;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Couleur de base avec dégradé
+            const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size);
+            grad.addColorStop(0, baseColor);
+            grad.addColorStop(1, adjustColor(baseColor, -30));
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, size, size);
+
+            // Cratères et formations
+            for (let i = 0; i < 80; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = Math.random() * (isGround ? 300 : 150);
+                const crater = ctx.createRadialGradient(x, y, 0, x, y, r);
+                crater.addColorStop(0, `rgba(0,0,0,${Math.random() * 0.5})`);
+                crater.addColorStop(0.7, `rgba(0,0,0,${Math.random() * 0.2})`);
+                crater.addColorStop(1, 'transparent');
+                ctx.fillStyle = crater;
+                ctx.fillRect(0, 0, size, size);
+            }
+
+            // Détails de surface
+            for (let i = 0; i < 6000; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const s = Math.random() * 5;
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.08)';
+                ctx.fillRect(x, y, s, s);
+            }
+
+            // Veines minérales
+            for(let i = 0; i < 100; i++) {
+                ctx.strokeStyle = `rgba(${Math.random() * 100}, ${Math.random() * 100}, ${Math.random() * 255}, 0.3)`;
+                ctx.lineWidth = Math.random() * 4;
+                ctx.beginPath();
+                const startX = Math.random() * size;
+                const startY = Math.random() * size;
+                ctx.moveTo(startX, startY);
+                for(let j = 0; j < 5; j++) {
+                    ctx.lineTo(startX + (Math.random() - 0.5) * 200, startY + (Math.random() - 0.5) * 200);
+                }
+                ctx.stroke();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            if(isGround) tex.repeat.set(4, 4);
+            tex.anisotropy = 16;
+            return tex;
+        }
+
+        function adjustColor(color, amount) {
+            const num = parseInt(color.replace("#",""), 16);
+            const r = Math.max(0, Math.min(255, (num >> 16) + amount));
+            const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
+            const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
+            return "#" + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.body.appendChild(renderer.domElement);
+            
+            clock = new THREE.Clock();
+
+            scene.add(new THREE.AmbientLight(0x111122, 0.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+            sun.position.set(2000, 2000, 2000);
+            scene.add(sun);
+
+            createStars();
+            ship = createShip();
+            scene.add(ship);
+            ship.position.set(0, 0, 1500);
+
+            createHDPlanet("MOLTEN-X", "#ff3300", 400, new THREE.Vector3(3000, 0, -4000), 0xff4400, "Collecter 5 cristaux de lave");
+            createHDPlanet("NEPTUNE-PRO", "#0088ff", 450, new THREE.Vector3(-6000, 800, -8000), 0x00ffff, "Détruire 3 antennes alien");
+            createHDPlanet("KRYPTON-ELITE", "#44ff44", 350, new THREE.Vector3(0, -2000, -12000), 0x44ff88, "Scanner 4 monolithes anciens");
+
+            window.addEventListener('keydown', e => keys[e.code] = true);
+            window.addEventListener('keyup', e => keys[e.code] = false);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mousedown', () => {
+                if(!isLocked) document.body.requestPointerLock();
+                else shoot();
+            });
+            document.addEventListener('pointerlockchange', () => isLocked = document.pointerLockElement === document.body);
+            window.addEventListener('keydown', e => { if(e.code === 'KeyE') tryInteract(); });
+
+            animate();
+        }
+
+        function createStars() {
+            const starGeo = new THREE.BufferGeometry();
+            const pos = [];
+            for(let i=0; i<30000; i++) {
+                pos.push((Math.random()-0.5)*100000, (Math.random()-0.5)*100000, (Math.random()-0.5)*100000);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            const starMat = new THREE.PointsMaterial({color: 0xffffff, size: 2, transparent: true, opacity: 0.7});
+            scene.add(new THREE.Points(starGeo, starMat));
+        }
+
+        function createShip() {
+            const g = new THREE.Group();
+            
+            // Texture métallique HD
+            const metalTex = createMetallicTexture();
+            const bodyMat = new THREE.MeshStandardMaterial({
+                map: metalTex,
+                metalness: 0.95,
+                roughness: 0.15,
+                envMapIntensity: 1
+            });
+            
+            // Cockpit en verre avec reflets
+            const cockpitGeo = new THREE.SphereGeometry(1.5, 32, 32);
+            const cockpit = new THREE.Mesh(cockpitGeo, new THREE.MeshPhysicalMaterial({
+                color: 0x00f0ff,
+                metalness: 0.2,
+                roughness: 0.1,
+                transparent: true,
+                opacity: 0.4,
+                transmission: 0.9
+            }));
+            cockpit.position.set(0, 0.8, -3);
+            g.add(cockpit);
+            
+            // Corps principal avec détails
+            const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 1.5, 10, 16), bodyMat);
+            hull.rotation.x = Math.PI/2;
+            g.add(hull);
+            
+            // Ailes avec panneaux
+            const wingGeo = new THREE.BoxGeometry(14, 0.4, 4);
+            const wings = new THREE.Mesh(wingGeo, bodyMat);
+            g.add(wings);
+            
+            // Détails néon
+            const neonMat = new THREE.MeshBasicMaterial({color: 0x00f0ff});
+            for(let i = 0; i < 3; i++) {
+                const neon = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.08, 0.08), neonMat);
+                neon.position.z = -1.5 + i * 0.8;
+                g.add(neon);
+            }
+            
+            // Lignes de fuselage
+            for(let i = 0; i < 8; i++) {
+                const line = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 10), bodyMat);
+                line.position.x = Math.cos(i * Math.PI / 4) * 1;
+                line.position.y = Math.sin(i * Math.PI / 4) * 1;
+                line.rotation.x = Math.PI/2;
+                g.add(line);
+            }
+            
+            // Réacteurs avec glow
+            for(let i = 0; i < 2; i++) {
+                const engineBase = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.7, 0.8, 2, 16), 
+                    bodyMat
+                );
+                engineBase.rotation.x = Math.PI/2;
+                engineBase.position.set(i === 0 ? -3.5 : 3.5, -0.3, 4);
+                g.add(engineBase);
+                
+                const flameGeo = new THREE.ConeGeometry(0.6, 4, 16);
+                const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
+                    color: 0x00f0ff,
+                    transparent: true,
+                    opacity: 0.7
+                }));
+                flame.rotation.x = -Math.PI/2;
+                flame.position.set(i === 0 ? -3.5 : 3.5, -0.3, 6);
+                engineFlames.push(flame);
+                g.add(flame);
+                
+                // Glow externe
+                const glowGeo = new THREE.ConeGeometry(1, 6, 16);
+                const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({
+                    color: 0x00f0ff,
+                    transparent: true,
+                    opacity: 0.2
+                }));
+                glow.rotation.x = -Math.PI/2;
+                glow.position.set(i === 0 ? -3.5 : 3.5, -0.3, 7);
+                engineFlames.push(glow);
+                g.add(glow);
+            }
+            
+            return g;
+        }
+
+        function createHDPlanet(name, color, size, pos, atmosphereColor, missionDesc) {
+            const group = new THREE.Group();
+            const tex = createPlanetTexture(color);
+            const mat = new THREE.MeshStandardMaterial({ 
+                map: tex, 
+                bumpMap: tex, 
+                bumpScale: 6, 
+                roughness: 0.85,
+                metalness: 0.1
+            });
+            const pMesh = new THREE.Mesh(new THREE.SphereGeometry(size, 128, 128), mat);
+            group.add(pMesh);
+
+            const clouds = new THREE.Mesh(
+                new THREE.SphereGeometry(size * 1.03, 64, 64), 
+                new THREE.MeshStandardMaterial({ 
+                    map: createPlanetTexture('rgba(255,255,255,0.1)'), 
+                    transparent: true, 
+                    opacity: 0.3 
+                })
+            );
+            group.add(clouds);
+
+            const glow = new THREE.Mesh(
+                new THREE.SphereGeometry(size * 1.2, 64, 64), 
+                new THREE.MeshBasicMaterial({
+                    color: atmosphereColor, 
+                    transparent: true, 
+                    opacity: 0.15, 
+                    side: THREE.BackSide
+                })
+            );
+            group.add(glow);
+
+            group.position.copy(pos);
+            group.userData = { name, size, atmosphereColor, clouds, color, missionDesc };
+            scene.add(group);
+            planets.push(group);
+
+            // Ennemis gardiens
+            for(let i = 0; i < 3; i++) {
+                const enemy = createEnemyShip();
+                enemy.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*3000, (Math.random()-0.5)*3000, (Math.random()-0.5)*3000));
+                enemy.userData = { hp: 5, home: pos.clone(), lastShot: 0, planet: name };
+                enemies.push(enemy);
+                scene.add(enemy);
+            }
+        }
+
+        function createEnemyShip() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({color: 0xff0000, metalness: 0.9, roughness: 0.1});
+            const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 1.2, 8, 8), mat);
+            hull.rotation.x = Math.PI/2;
+            const wings = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 3), mat);
+            g.add(hull, wings);
+            return g;
+        }
+
+        function startMission(planet) {
+            const missions = {
+                "MOLTEN-X": () => spawnCrystals(5, 0xff6600),
+                "NEPTUNE-PRO": () => spawnAntennes(3, 0x0088ff),
+                "KRYPTON-ELITE": () => spawnMonolithes(4, 0x44ff44)
+            };
+            
+            collectedItems = 0;
+            missions[planet.userData.name]();
+            
+            currentMission = {
+                name: planet.userData.name,
+                desc: planet.userData.missionDesc,
+                total: missionObjects.length,
+                collected: 0
+            };
+            
+            document.getElementById('mission-panel').style.display = 'block';
+            document.getElementById('mission-desc').innerText = currentMission.desc;
+            updateMissionProgress();
+            
+            showNotification(`🎯 MISSION : ${currentMission.desc}`);
+        }
+
+        function spawnCrystals(count, color) {
+            for(let i = 0; i < count; i++) {
+                const crystal = new THREE.Mesh(
+                    new THREE.ConeGeometry(20, 50, 6),
+                    new THREE.MeshStandardMaterial({
+                        color: color,
+                        emissive: color,
+                        emissiveIntensity: 0.5,
+                        metalness: 0.8,
+                        roughness: 0.2
+                    })
+                );
+                const rx = (Math.random()-0.5) * 6000;
+                const rz = (Math.random()-0.5) * 6000;
+                const ry = (Math.sin(rx/500) * Math.cos(rz/500) * 200) + (Math.sin(rx/100) * 30);
+                crystal.position.set(rx, ry + 25, rz);
+                crystal.rotation.z = Math.random() * Math.PI * 2;
+                crystal.userData.type = 'collectible';
+                planetEnvironment.add(crystal);
+                missionObjects.push(crystal);
+                
+                // Particules autour
+                const particles = createParticleRing(crystal.position, color);
+                planetEnvironment.add(particles);
+            }
+        }
+
+        function spawnAntennes(count, color) {
+            for(let i = 0; i < count; i++) {
+                const base = new THREE.Group();
+                const pole = new THREE.Mesh(
+                    new THREE.CylinderGeometry(5, 8, 80, 8),
+                    new THREE.MeshStandardMaterial({color: 0x333333, metalness: 0.8})
+                );
+                const dish = new THREE.Mesh(
+                    new THREE.CylinderGeometry(30, 25, 10, 16),
+                    new THREE.MeshStandardMaterial({color: color, metalness: 0.9})
+                );
+                dish.position.y = 45;
+                base.add(pole, dish);
+                
+                const rx = (Math.random()-0.5) * 6000;
+                const rz = (Math.random()-0.5) * 6000;
+                const ry = (Math.sin(rx/500) * Math.cos(rz/500) * 200) + (Math.sin(rx/100) * 30);
+                base.position.set(rx, ry + 40, rz);
+                base.userData.type = 'destroyable';
+                base.userData.hp = 3;
+                planetEnvironment.add(base);
+                missionObjects.push(base);
+            }
+        }
+
+        function spawnMonolithes(count, color) {
+            for(let i = 0; i < count; i++) {
+                const monolith = new THREE.Mesh(
+                    new THREE.BoxGeometry(20, 100, 20),
+                    new THREE.MeshStandardMaterial({
+                        color: color,
+                        emissive: color,
+                        emissiveIntensity: 0.3,
+                        metalness: 0.5,
+                        roughness: 0.3
+                    })
+                );
+                const rx = (Math.random()-0.5) * 6000;
+                const rz = (Math.random()-0.5) * 6000;
+                const ry = (Math.sin(rx/500) * Math.cos(rz/500) * 200) + (Math.sin(rx/100) * 30);
+                monolith.position.set(rx, ry + 50, rz);
+                monolith.userData.type = 'scannable';
+                monolith.userData.scanned = false;
+                planetEnvironment.add(monolith);
+                missionObjects.push(monolith);
+                
+                // Runes lumineuses
+                for(let j = 0; j < 5; j++) {
+                    const rune = new THREE.Mesh(
+                        new THREE.PlaneGeometry(8, 8),
+                        new THREE.MeshBasicMaterial({
+                            color: color,
+                            transparent: true,
+                            opacity: 0.8
+                        })
+                    );
+                    rune.position.set(0, -40 + j * 20, 10.5);
+                    monolith.add(rune);
+                }
+            }
+        }
+
+        function createParticleRing(pos, color) {
+            const geo = new THREE.BufferGeometry();
+            const positions = [];
+            for(let i = 0; i < 50; i++) {
+                const angle = (i / 50) * Math.PI * 2;
+                positions.push(
+                    Math.cos(angle) * 30,
+                    Math.sin(i * 0.5) * 10,
+                    Math.sin(angle) * 30
+                );
+            }
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({
+                color: color,
+                size: 5,
+                transparent: true,
+                opacity: 0.6
+            });
+            return new THREE.Points(geo, mat);
+        }
+
+        function checkMissionObjectInteraction() {
+            missionObjects.forEach((obj, index) => {
+                const dist = camera.position.distanceTo(obj.position);
+                
+                if(obj.userData.type === 'collectible' && dist < 100) {
+                    planetEnvironment.remove(obj);
+                    missionObjects.splice(index, 1);
+                    collectedItems++;
+                    score += 100;
+                    document.getElementById('score').innerText = "PRIME : " + score;
+                    updateMissionProgress();
+                    showNotification('✅ CRISTAL COLLECTÉ !');
+                }
+                
+                if(obj.userData.type === 'scannable' && !obj.userData.scanned && dist < 150) {
+                    document.getElementById('prompt').innerText = "[E] SCANNER LE MONOLITHE";
+                }
+                
+                if(obj.userData.type === 'destroyable' && dist < 200) {
+                    document.getElementById('prompt').innerText = "[CLIC] DÉTRUIRE L'ANTENNE";
+                }
+            });
+        }
+
+        function updateMissionProgress() {
+            if(!currentMission) return;
+            currentMission.collected = collectedItems;
+            const progress = (collectedItems / currentMission.total) * 100;
+            document.getElementById('mission-progress-bar').style.width = progress + '%';
+            
+            if(collectedItems >= currentMission.total) {
+                setTimeout(() => {
+                    showNotification('🎉 MISSION ACCOMPLIE ! +500 PRIME');
+                    score += 500;
+                    document.getElementById('score').innerText = "PRIME : " + score;
+                    document.getElementById('mission-panel').style.display = 'none';
+                    currentMission = null;
+                    missionObjects = [];
+                }, 500);
+            }
+        }
+
+        function showNotification(text) {
+            const notif = document.getElementById('notification');
+            notif.innerText = text;
+            notif.style.display = 'block';
+            setTimeout(() => {
+                notif.style.display = 'none';
+            }, 3000);
+        }
+
+        function startLanding(p) {
+            document.getElementById('fade').style.opacity = 1;
+            currentPlanetObj = p;
+            setTimeout(() => {
+                currentMode = 'PLANET';
+                planets.forEach(pl => pl.visible = (pl === p));
+                enemies.forEach(e => e.visible = false);
+                
+                planetEnvironment = new THREE.Group();
+                
+                const groundSize = 12000;
+                const segments = 128;
+                const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, segments, segments);
+                
+                const posAttr = groundGeo.attributes.position;
+                for (let i = 0; i < posAttr.count; i++) {
+                    const x = posAttr.getX(i);
+                    const y = posAttr.getY(i);
+                    const z = (Math.sin(x/500) * Math.cos(y/500) * 200) + (Math.sin(x/100) * 30);
+                    posAttr.setZ(i, z);
+                }
+                groundGeo.computeVertexNormals();
+
+                const groundTex = createPlanetTexture(p.userData.color, true);
+                const groundMat = new THREE.MeshStandardMaterial({ 
+                    map: groundTex, 
+                    bumpMap: groundTex, 
+                    bumpScale: 10,
+                    roughness: 0.9 
+                });
+                const ground = new THREE.Mesh(groundGeo, groundMat);
+                ground.rotation.x = -Math.PI/2;
+                planetEnvironment.add(ground);
+
+                const rockGeo = new THREE.IcosahedronGeometry(15, 1);
+                for(let i=0; i<150; i++) {
+                    const rock = new THREE.Mesh(rockGeo, groundMat);
+                    const rx = (Math.random()-0.5) * 8000;
+                    const rz = (Math.random()-0.5) * 8000;
+                    const ry = (Math.sin(rx/500) * Math.cos(rz/500) * 200) + (Math.sin(rx/100) * 30);
+                    rock.position.set(rx, ry + 5, rz);
+                    rock.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+                    rock.scale.setScalar(Math.random()*3 + 1);
+                    planetEnvironment.add(rock);
+                }
+
+                scene.fog = new THREE.FogExp2(p.userData.atmosphereColor, 0.0004);
+                scene.add(planetEnvironment);
+
+                ship.scale.set(10, 10, 10);
+                ship.position.set(0, 100, 0);
+                camera.position.set(100, 150, 100);
+                
+                document.getElementById('location').innerText = p.userData.name;
+                document.getElementById('questStatus').innerText = 'EXPLORATION ACTIVE';
+                document.getElementById('fade').style.opacity = 0;
+                
+                startMission(p);
+            }, 800);
+        }
+
+        function exitPlanet() {
+            document.getElementById('fade').style.opacity = 1;
+            document.getElementById('mission-panel').style.display = 'none';
+            missionObjects = [];
+            currentMission = null;
+            setTimeout(() => {
+                currentMode = 'SPACE';
+                scene.remove(planetEnvironment);
+                scene.fog = null;
+                planets.forEach(pl => pl.visible = true);
+                enemies.forEach(e => e.visible = true);
+                ship.scale.set(1, 1, 1);
+                ship.position.copy(currentPlanetObj.position).add(new THREE.Vector3(0,0,1000));
+                document.getElementById('location').innerText = "ESPACE PROFOND";
+                document.getElementById('questStatus').innerText = 'SCAN SECTEUR';
+                document.getElementById('fade').style.opacity = 0;
+            }, 800);
+        }
+
+        function onMouseMove(e) {
+            if(!isLocked) return;
+            const s = 0.002;
+            if(currentMode === 'SPACE') {
+                shipRot.yaw -= e.movementX * s;
+                shipRot.pitch -= e.movementY * s;
+            } else {
+                playerRot.yaw -= e.movementX * s;
+                playerRot.pitch = Math.max(-1.5, Math.min(1.5, playerRot.pitch - e.movementY * s));
+            }
+        }
+
+        function shoot() {
+            const laser = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 20), new THREE.MeshBasicMaterial({color: 0x00f0ff}));
+            const dir = new THREE.Vector3(0,0,-1);
+            if(currentMode === 'SPACE') {
+                laser.position.copy(ship.position);
+                laser.quaternion.copy(ship.quaternion);
+                dir.applyQuaternion(ship.quaternion);
+            } else {
+                laser.position.copy(camera.position);
+                laser.quaternion.copy(camera.quaternion);
+                dir.applyQuaternion(camera.quaternion);
+            }
+            scene.add(laser);
+            let frames = 0;
+            function move() {
+                laser.position.addScaledVector(dir, 50);
+                
+                enemies.forEach((en, i) => {
+                    if(laser.position.distanceTo(en.position) < 100) {
+                        en.userData.hp--;
+                        if(en.userData.hp <= 0) {
+                            score += 50;
+                            document.getElementById('score').innerText = "PRIME : " + score;
+                            scene.remove(en);
+                            enemies.splice(i, 1);
+                        }
+                        scene.remove(laser);
+                        return;
+                    }
+                });
+                
+                missionObjects.forEach((obj, i) => {
+                    if(obj.userData.type === 'destroyable' && laser.position.distanceTo(obj.position) < 100) {
+                        obj.userData.hp--;
+                        if(obj.userData.hp <= 0) {
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(i, 1);
+                            collectedItems++;
+                            score += 150;
+                            document.getElementById('score').innerText = "PRIME : " + score;
+                            updateMissionProgress();
+                            showNotification('💥 ANTENNE DÉTRUITE !');
+                        }
+                        scene.remove(laser);
+                        return;
+                    }
+                });
+                
+                if(frames++ < 40) requestAnimationFrame(move);
+                else scene.remove(laser);
+            } move();
+        }
+
+        function enemyShoot(enemy) {
+            const laser = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 20), new THREE.MeshBasicMaterial({color: 0xff0000}));
+            laser.position.copy(enemy.position);
+            laser.lookAt(ship.position);
+            scene.add(laser);
+            
+            const dir = new THREE.Vector3().subVectors(ship.position, enemy.position).normalize();
+            let frames = 0;
+            function move() {
+                laser.position.addScaledVector(dir, 40);
+                
+                if(currentMode === 'SPACE' && laser.position.distanceTo(ship.position) < 50) {
+                    takeDamage(5);
+                    scene.remove(laser);
+                    return;
+                }
+                
+                if(frames++ < 50) requestAnimationFrame(move);
+                else scene.remove(laser);
+            } move();
+        }
+
+        function takeDamage(val) {
+            health -= val;
+            document.getElementById('health-bar').style.width = health + "%";
+            document.getElementById('damage-overlay').style.backgroundColor = "rgba(255,0,0,0.3)";
+            setTimeout(() => { document.getElementById('damage-overlay').style.backgroundColor = "transparent"; }, 150);
+            if(health <= 0) {
+                alert("GAME OVER - VAISSEAU DÉTRUIT");
+                location.reload();
+            }
+        }
+
+        function tryInteract() {
+            if(currentMode === 'SPACE') {
+                planets.forEach(p => {
+                    if(ship.position.distanceTo(p.position) < p.userData.size + 800) startLanding(p);
+                });
+            } else {
+                if(camera.position.distanceTo(ship.position) < 150) {
+                    exitPlanet();
+                } else {
+                    missionObjects.forEach(obj => {
+                        if(obj.userData.type === 'scannable' && !obj.userData.scanned && camera.position.distanceTo(obj.position) < 150) {
+                            obj.userData.scanned = true;
+                            collectedItems++;
+                            score += 120;
+                            document.getElementById('score').innerText = "PRIME : " + score;
+                            updateMissionProgress();
+                            showNotification('🔍 MONOLITHE SCANNÉ !');
+                            
+                            obj.traverse(child => {
+                                if(child.isMesh && child.material.emissive) {
+                                    child.material.emissiveIntensity = 1;
+                                }
+                            });
+                        }
+                    });
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            if(isLocked) {
+                if(currentMode === 'SPACE') {
+                    ship.quaternion.setFromEuler(new THREE.Euler(shipRot.pitch, shipRot.yaw, 0, 'YXZ'));
+                    const speed = (keys['ShiftLeft'] ? 1800 : 700) * delta;
+                    if(keys['KeyW'] || keys['KeyZ']) ship.translateZ(-speed);
+                    if(keys['KeyS']) ship.translateZ(speed*0.5);
+                    
+                    engineFlames.forEach((f, i) => {
+                        const scale = keys['KeyW'] || keys['KeyZ'] ? 1.8 : 0.5;
+                        f.scale.setScalar(scale + Math.sin(time * 10 + i) * 0.2);
+                    });
+                    
+                    camera.position.lerp(ship.position.clone().add(new THREE.Vector3(0, 15, 65).applyQuaternion(ship.quaternion)), 0.1);
+                    camera.lookAt(ship.position);
+                    
+                    planets.forEach(p => {
+                        p.rotation.y += 0.001;
+                        p.userData.clouds.rotation.y += 0.0015;
+                        if(ship.position.distanceTo(p.position) < p.userData.size + 800) {
+                            document.getElementById('prompt').innerText = "[E] ATTERRIR SUR " + p.userData.name;
+                        } else if(document.getElementById('prompt').innerText.includes(p.userData.name)) {
+                            document.getElementById('prompt').innerText = "";
+                        }
+                    });
+
+                    enemies.forEach(en => {
+                        const distToPlayer = en.position.distanceTo(ship.position);
+                        const distToHome = en.position.distanceTo(en.userData.home);
+
+                        if(distToPlayer < 4000 && distToHome < 5000) {
+                            en.lookAt(ship.position);
+                            en.translateZ(-15);
+                            if(time - en.userData.lastShot > 2.5) {
+                                enemyShoot(en);
+                                en.userData.lastShot = time;
+                            }
+                        } else {
+                            en.position.x = en.userData.home.x + Math.sin(time * 0.3) * 1500;
+                            en.position.z = en.userData.home.z + Math.cos(time * 0.3) * 1500;
+                            en.lookAt(en.userData.home);
+                        }
+                    });
+
+                } else {
+                    camera.rotation.set(playerRot.pitch, playerRot.yaw, 0, 'YXZ');
+                    const moveSpd = 350 * delta;
+                    if(keys['KeyW'] || keys['KeyZ']) camera.translateZ(-moveSpd);
+                    if(keys['KeyS']) camera.translateZ(moveSpd);
+                    if(keys['KeyA'] || keys['KeyQ']) camera.translateX(-moveSpd);
+                    if(keys['KeyD']) camera.translateX(moveSpd);
+                    
+                    const tx = camera.position.x;
+                    const tz = camera.position.z;
+                    const ty = (Math.sin(tx/500) * Math.cos(tz/500) * 200) + (Math.sin(tx/100) * 30);
+                    camera.position.y = ty + 40;
+
+                    document.getElementById('prompt').innerText = "";
+                    if(camera.position.distanceTo(ship.position) < 200) {
+                        document.getElementById('prompt').innerText = "[E] RETOUR AU VAISSEAU";
+                    }
+                    
+                    checkMissionObjectInteraction();
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        init();
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
