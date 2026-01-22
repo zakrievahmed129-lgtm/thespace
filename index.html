@@ -507,10 +507,152 @@
             background: linear-gradient(to top, rgba(255, 100, 0, 0.4), transparent);
             opacity: 0;
         }
+
+        /* MOBILE UI */
+        #mobile-controls {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 150;
+        }
+
+        #joystick-wrapper {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 150px;
+            height: 150px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 2px solid rgba(0, 240, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        #joystick-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 60px;
+            height: 60px;
+            background: radial-gradient(circle, #00f0ff 0%, #0088ff 100%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px #00f0ff;
+        }
+
+        #action-buttons {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        .mobile-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(0, 240, 255, 0.2);
+            border: 2px solid #00f0ff;
+            border-radius: 50%;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            user-select: none;
+        }
+
+        .mobile-btn:active {
+            background: #00f0ff;
+            color: #000;
+        }
+
+        #exit-btn {
+            position: absolute;
+            top: 220px;
+            right: 20px;
+            width: 180px;
+            height: 50px;
+            background: rgba(255, 100, 0, 0.2);
+            border: 2px solid #ff6600;
+            color: #fff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border-radius: 10px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+        }
+
+        #settings-menu {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 350px;
+            background: rgba(0, 20, 40, 0.95);
+            border: 2px solid #00f0ff;
+            padding: 30px;
+            color: #fff;
+            z-index: 2000;
+            box-shadow: 0 0 50px rgba(0, 240, 255, 0.5);
+            border-radius: 15px;
+            backdrop-filter: blur(20px);
+        }
+
+        .setting-row {
+            margin: 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .setting-row label {
+            font-size: 0.9rem;
+            color: #00f0ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="range"] {
+            width: 150px;
+            accent-color: #00f0ff;
+        }
+
+        .menu-btn {
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid #00f0ff;
+            color: #00f0ff;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+
+        .menu-btn:hover {
+            background: #00f0ff;
+            color: #000;
+        }
     </style>
 </head>
 
-<body>
+<body
+    onclick="if(gameStarted && !isInCinematic && !settingsOpen && !isLocked && !('ontouchstart' in window)) document.body.requestPointerLock()">
 
     <div id="damage-overlay"></div>
     <div id="hud">
@@ -528,11 +670,11 @@
 
     <div id="objective-panel">
         <div id="objective-title">DIRECTIONS DE MISSION</div>
-        <div id="objective-desc" id="objective-desc">SYNCHRONISATION...</div>
+        <div id="objective-desc">SYNCHRONISATION...</div>
     </div>
 
     <!-- RADAR -->
-    <div id="radar-container" id="radar-ui">
+    <div id="radar-container">
         <canvas id="radar-canvas" width="180" height="180"></canvas>
     </div>
 
@@ -540,6 +682,47 @@
     <div id="prompt"></div>
     <div id="crosshair"></div>
     <div id="fade"></div>
+    <div id="fuel-container"
+        style="display: none; position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); width: 200px; height: 8px; background: rgba(0,0,0,0.5); border: 1px solid #00f0ff; border-radius: 4px; pointer-events: none;">
+        <div id="fuel-bar" style="width: 100%; height: 100%; background: #0088ff; box-shadow: 0 0 10px #0088ff;"></div>
+    </div>
+    <div id="ship-indicator"
+        style="display: none; position: fixed; top: 180px; left: 50%; transform: translateX(-50%); color: #00f0ff; font-family: 'Orbitron', sans-serif; font-size: 14px; text-shadow: 0 0 5px #00f0ff; pointer-events: none; padding: 5px 15px; background: rgba(0,0,0,0.4); border-radius: 20px;">
+        ▲ VAISSEAU : <span id="ship-dist">0</span>m
+    </div>
+
+    <!-- MOBILE UI -->
+    <div id="mobile-controls">
+        <div id="joystick-wrapper">
+            <div id="joystick-knob"></div>
+        </div>
+        <div id="action-buttons">
+            <div class="mobile-btn" id="btn-shoot">FEU</div>
+            <div class="mobile-btn" id="btn-interact">ACTION</div>
+        </div>
+        <div id="exit-btn">QUITTER PLANÈTE</div>
+    </div>
+
+    <!-- SETTINGS MENU -->
+    <div id="settings-menu">
+        <h2
+            style="text-align: center; margin-top: 0; color: #00f0ff; border-bottom: 1px solid #00f0ff; padding-bottom: 10px;">
+            RÉGLAGES</h2>
+
+        <div class="setting-row">
+            <label>Sensibilité</label>
+            <input type="range" id="sens-slider" min="0.5" max="5" step="0.1" value="1">
+        </div>
+
+        <div class="setting-row">
+            <label>Auto-Shoot</label>
+            <input type="checkbox" id="autoshoot-toggle">
+        </div>
+
+        <button class="menu-btn" onclick="toggleSettings()">REPRENDRE</button>
+        <button class="menu-btn" onclick="location.reload()" style="border-color: #ff4444; color: #ff4444;">REQUITTER /
+            REJOUER</button>
+    </div>
 
     <!-- Intro Cinematic -->
     <div id="intro-screen">
@@ -574,7 +757,7 @@
 
     <script>
         let scene, camera, renderer, composer, clock;
-        let isLocked = false, currentMode = 'SPACE';
+        let isLocked = false, isTouch = false, currentMode = 'SPACE';
         let ship, stars, currentPlanetObj, planetEnvironment, engineFlames = [];
         let planets = [];
         let enemies = []; // Space and Ground enemies
@@ -583,11 +766,26 @@
         let shipHealth = 1000; // New Ship HP
         let maxShipHealth = 1000;
         let upgrades = {
-            laserLevel: 1, // 1 = Single, 2 = Twin, 3 = Quad
+            laserLevel: 1,
             damage: 1,
             speed: 1,
-            armor: 1
+            armor: 1,
+            footSpeed: 1,
+            jetpack: 0 // 0 = None, 1 = Basic, 2 = Advanced
         };
+        let planetProgress = {
+            "MOLTEN-X": false,
+            "NEPTUNE-PRO": false
+        };
+        let verticalVelocity = 0;
+        let isJumping = false;
+        let jetpackFuel = 100;
+        const maxJetpackFuel = 100;
+        let missionTimer = 0;
+        let missionActive = false;
+        let enemiesInWave = [];
+        let bossEnemy = null;
+        let checkPointsHit = 0;
         let keys = {};
         const shipRot = { yaw: 0, pitch: 0 };
         const playerRot = { yaw: 0, pitch: 0 };
@@ -602,6 +800,8 @@
         let gameStarted = false;
         let isInCinematic = false;
         let shopOpen = false;
+        let settingsOpen = false;
+        let sensitivity = 1.0;
 
         // --- GAMEPLAY V3 CAMPAIGN ---
         let questStage = 0;
@@ -612,12 +812,44 @@
             gateRepaired: false
         };
 
+        // --- SAVE SYSTEM ---
+        function saveGame() {
+            const gameState = {
+                credits,
+                upgrades,
+                planetProgress,
+                questStage,
+                specialItems
+            };
+            localStorage.setItem('odyssee_save', JSON.stringify(gameState));
+            showNotification("PARTIE SAUVEGARDÉE 💾");
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem('odyssee_save');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    credits = data.credits || 0;
+                    if (data.upgrades) Object.assign(upgrades, data.upgrades);
+                    if (data.planetProgress) Object.assign(planetProgress, data.planetProgress);
+                    questStage = data.questStage || 0;
+                    if (data.specialItems) Object.assign(specialItems, data.specialItems);
+
+                    // Update UI
+                    document.getElementById('score').innerText = "PRIME : " + credits;
+                    console.log("Game Loaded Successfully");
+                } catch (e) {
+                    console.error("Failed to load save", e);
+                }
+            }
+        }
         const QUEST_STAGES = [
             { title: "INITIATION", desc: "Accumulez 1000 crédits pour préparer le voyage.", goal: 1000 },
             { title: "ARMEMENT", desc: "Achetez l'armure 'Titan Plating' dans la Boutique (B).", goal: 1 },
             { title: "LE CHIFFRE", desc: "Trouvez le Chiffre Ancien sur NEPTUNE-PRO.", goal: 1 },
             { title: "ÉNERGIE NOIRE", desc: "Collectez 5 Noyaux d'Énergie sur MOLTEN-X.", goal: 5 },
-            { title: "ASCENSION", desc: "Atteignez la Porte Warp et activez-la (5000 CR).", goal: 5000 }
+            { title: "ÉXIL", desc: "Atteignez la Porte Warp et activez-la (5000 CR).", goal: 5000 }
         ];
 
         // --- TEXTURES ULTRA HD PROCÉDURALES ---
@@ -1441,6 +1673,7 @@
                         document.getElementById('hud').style.opacity = '1';
                         document.getElementById('crosshair').style.opacity = '1';
                         document.getElementById('prompt').style.opacity = '1';
+                        document.getElementById('objective-panel').style.display = 'block';
                         isInCinematic = false;
                         if (callback) callback();
                     }, 500);
@@ -1464,7 +1697,7 @@
             document.getElementById('hud').style.opacity = '0';
             document.getElementById('crosshair').style.opacity = '0';
             document.getElementById('prompt').style.opacity = '0';
-            document.getElementById('mission-panel').style.display = 'none';
+            document.getElementById('objective-panel').style.display = 'none';
 
             // Store starting position (on planet surface)
             const startPos = ship.position.clone();
@@ -1764,6 +1997,7 @@
                         document.getElementById('hud').style.opacity = '1';
                         document.getElementById('crosshair').style.opacity = '1';
                         document.getElementById('prompt').style.opacity = '1';
+                        document.getElementById('objective-panel').style.display = 'block';
                         isInCinematic = false;
                         if (callback) callback();
                     }, 500);
@@ -1786,52 +2020,121 @@
 
             clock = new THREE.Clock();
 
-            scene.add(new THREE.AmbientLight(0x111122, 0.2)); // Reduced ambient, use hemisphere
+            // Mobile Detection & Setup
+            isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            if (isTouch) {
+                document.getElementById('mobile-controls').style.display = 'block';
+            }
 
-            // Richer lighting for metallic materials
-            const hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.3); // Blue sky, Greenish ground reflection
+            scene.add(new THREE.AmbientLight(0x111122, 0.2));
+
+            const hemiLight = new THREE.HemisphereLight(0x0000ff, 0x00ff00, 0.3);
             scene.add(hemiLight);
 
-            const sun = new THREE.DirectionalLight(0xffffff, 2.0); // Reduced from 3.0
+            const sun = new THREE.DirectionalLight(0xffffff, 2.0);
             sun.position.set(2000, 2000, 2000);
             sun.castShadow = true;
             scene.add(sun);
 
+            loadGame(); // PERSISTENCE
             createStars();
             ship = createTitanShip();
             scene.add(ship);
             ship.position.set(0, 0, 1500);
 
-            createHDPlanet("MOLTEN-X", "#ff3300", 400, new THREE.Vector3(3000, 0, -4000), 0xff4400, "Collecter 5 cristaux de lave");
-            createHDPlanet("NEPTUNE-PRO", "#0088ff", 450, new THREE.Vector3(-6000, 800, -8000), 0x00ffff, "Détruire 3 antennes alien");
-            createHDPlanet("KRYPTON-ELITE", "#44ff44", 350, new THREE.Vector3(0, -2000, -12000), 0x44ff88, "Scanner 4 monolithes anciens");
+            // Spaced out Planet Positions (x3 more distant)
+            createHDPlanet("MOLTEN-X", "#ff3300", 600, new THREE.Vector3(15000, 0, -12000), 0xff4400, "Collecter 5 cristaux de lave");
+            createHDPlanet("NEPTUNE-PRO", "#0088ff", 700, new THREE.Vector3(-20000, 2000, -25000), 0x00ffff, "Détruire 3 antennes alien");
+            createHDPlanet("KRYPTON-ELITE", "#44ff44", 500, new THREE.Vector3(5000, -5000, -45000), 0x44ff88, "Scanner 4 monolithes anciens");
+
+            // NEW PLANETS
+            createHDPlanet("VULCAN-9", "#ffaa00", 550, new THREE.Vector3(30000, 4000, -35000), 0xff2200, "Extraire 8 noyaux de magma");
+            createHDPlanet("ICE-OMEGA", "#ffffff", 480, new THREE.Vector3(-35000, -2000, -10000), 0x88ccff, "Scanner 5 monolithes de glace");
+
+            // Settings Listeners
+            document.getElementById('sens-slider').addEventListener('input', (e) => {
+                sensitivity = parseFloat(e.target.value);
+            });
+
+            // Pointer Lock logic (revised)
+            document.addEventListener('click', (e) => {
+                if (gameStarted && !isInCinematic && !shopOpen && !settingsOpen && !isTouch) {
+                    if (!isLocked) {
+                        document.body.requestPointerLock();
+                    } else {
+                        shoot(); // Left click to shoot on PC
+                    }
+                } else if (gameStarted && !isInCinematic && isTouch) {
+                    shoot();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isLocked = (document.pointerLockElement === document.body) || isTouch;
+            });
+
+            // Joystick Logic
+            const knob = document.getElementById('joystick-knob');
+            const wrapper = document.getElementById('joystick-wrapper');
+            let isDragging = false;
+            let startPos = { x: 0, y: 0 };
+
+            wrapper.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                const touch = e.touches[0];
+                startPos = { x: touch.clientX, y: touch.clientY };
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                const touch = e.touches[0];
+                const dx = touch.clientX - startPos.x;
+                const dy = touch.clientY - startPos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const maxDist = 45;
+                const angle = Math.atan2(dy, dx);
+
+                const finalDist = Math.min(dist, maxDist);
+                const x = Math.cos(angle) * finalDist;
+                const y = Math.sin(angle) * finalDist;
+
+                knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+
+                // Map to keys
+                keys['KeyW'] = (y < -15);
+                keys['KeyS'] = (y > 15);
+                keys['KeyA'] = (x < -15);
+                keys['KeyD'] = (x > 15);
+            }, { passive: false });
+
+            window.addEventListener('touchend', () => {
+                isDragging = false;
+                knob.style.transform = `translate(-50%, -50%)`;
+                keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+            });
+
+            // Action Buttons
+            document.getElementById('btn-shoot').addEventListener('touchstart', (e) => { e.preventDefault(); shoot(); }, { passive: false });
+            document.getElementById('btn-interact').addEventListener('touchstart', (e) => { e.preventDefault(); tryInteract(); }, { passive: false });
+            document.getElementById('exit-btn').addEventListener('touchstart', (e) => { e.preventDefault(); exitPlanet(); }, { passive: false });
 
             window.addEventListener('keydown', e => {
                 keys[e.code] = true;
-                if (e.code === 'Space' && !isInCinematic) shoot(); // Fallback trigger
                 if (e.code === 'KeyE' && !isInCinematic) tryInteract();
             });
             window.addEventListener('keyup', e => keys[e.code] = false);
             window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mousedown', () => {
-                console.log("MOUSE DOWN DETECTED. GameStarted:", gameStarted, "Locked:", isLocked, "Cinematic:", isInCinematic);
-                if (!gameStarted) return;
-                if (!isLocked) document.body.requestPointerLock();
-                else if (!isInCinematic) shoot();
-            });
-            document.addEventListener('pointerlockchange', () => isLocked = document.pointerLockElement === document.body);
 
             // Start intro cinematic
             startIntroCinematic();
 
-            // BLOOM POST-PROCESSING
             const renderScene = new THREE.RenderPass(scene, camera);
             const bloomPass = new THREE.UnrealBloomPass(
                 new THREE.Vector2(window.innerWidth, window.innerHeight),
                 1.5, 0.4, 0.85
             );
-            bloomPass.threshold = 0.85; // High threshold to avoid planet ground blooming
-            bloomPass.strength = 0.8; // Reduced strength
+            bloomPass.threshold = 0.85;
+            bloomPass.strength = 0.8;
             bloomPass.radius = 0.5;
 
             composer = new THREE.EffectComposer(renderer);
@@ -2116,16 +2419,24 @@
 
             const missionData = {
                 "MOLTEN-X": {
-                    desc: "PHASE 1: Refroidir 3 évents de vapeur",
-                    spawn: () => spawnVents(3)
+                    desc: "PHASE 1: Récupérer 5 Noyaux Instables",
+                    spawn: () => spawnCrystals(5, 0xffaa00)
                 },
                 "NEPTUNE-PRO": {
-                    desc: "PHASE 1: Pirater 2 terminaux de données",
-                    spawn: () => spawnTerminals(2)
+                    desc: "PHASE 1: Protection du Satellite (2 min)",
+                    spawn: () => spawnDefenseTarget(0x00ccff)
                 },
                 "KRYPTON-ELITE": {
-                    desc: "PHASE 1: Activer 3 pylônes d'énergie",
+                    desc: "PHASE 1: Activer 3 Pylônes d'Énergie",
                     spawn: () => spawnPylons(3)
+                },
+                "VULCAN-9": {
+                    desc: "PHASE 1: Course Jetpack (5 Anneaux)",
+                    spawn: () => spawnRaceCourse(5)
+                },
+                "ICE-OMEGA": {
+                    desc: "PHASE 1: Extraire 3 Échantillons de Glace",
+                    spawn: () => spawnCrystals(3, 0x00ffff)
                 }
             };
 
@@ -2153,14 +2464,17 @@
             collectedItems = 0;
 
             if (currentMission.name === "MOLTEN-X") {
-                currentMission.desc = "PHASE 2: Extraire le Noyau de Lave";
-                spawnCrystals(1, 0xff6600); // One big core
+                currentMission.desc = "PHASE 2: Vaincre le GARDIEN DE LAVE";
+                createBoss(0xff4400);
             } else if (currentMission.name === "NEPTUNE-PRO") {
                 currentMission.desc = "PHASE 2: Détruire l'Antenne Maîtresse";
                 spawnAntennes(1, 0x0088ff);
-            } else if (currentMission.name === "KRYPTON-ELITE") {
-                currentMission.desc = "PHASE 2: Scanner le Monolithe Central";
-                spawnMonolithes(1, 0x44ff44);
+            } else if (currentMission.name === "VULCAN-9") {
+                currentMission.desc = "PHASE 2: Extraire le Noyau de Feu";
+                spawnCrystals(1, 0xff2200);
+            } else if (currentMission.name === "ICE-OMEGA") {
+                currentMission.desc = "PHASE 2: Extraire le Fragment de Glace Noire";
+                spawnCrystals(1, 0x00ffff);
             }
 
             currentMission.total = missionObjects.length;
@@ -2228,6 +2542,20 @@
             }
         }
 
+        function createBeacon(pos, color) {
+            const geo = new THREE.CylinderGeometry(2, 2, 2000, 8);
+            const mat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.3,
+                blending: THREE.AdditiveBlending
+            });
+            const beam = new THREE.Mesh(geo, mat);
+            beam.position.copy(pos);
+            beam.position.y += 1000;
+            return beam;
+        }
+
         function spawnCrystals(count, color) {
             for (let i = 0; i < count; i++) {
                 const crystal = new THREE.Mesh(
@@ -2240,12 +2568,21 @@
                         roughness: 0.2
                     })
                 );
-                const rx = (Math.random() - 0.5) * 6000;
-                const rz = (Math.random() - 0.5) * 6000;
+                // Guaranteed distribution
+                const angle = (i / count) * Math.PI * 2;
+                const radius = 2000 + Math.random() * 8000;
+                const rx = Math.cos(angle) * radius;
+                const rz = Math.sin(angle) * radius;
                 const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
                 crystal.position.set(rx, ry + 25, rz);
                 crystal.rotation.z = Math.random() * Math.PI * 2;
                 crystal.userData.type = 'collectible';
+
+                // Add Beacon
+                const beacon = createBeacon(crystal.position, color);
+                crystal.userData.beacon = beacon;
+                planetEnvironment.add(beacon);
+
                 planetEnvironment.add(crystal);
                 missionObjects.push(crystal);
 
@@ -2269,12 +2606,17 @@
                 dish.position.y = 45;
                 base.add(pole, dish);
 
-                const rx = (Math.random() - 0.5) * 6000;
-                const rz = (Math.random() - 0.5) * 6000;
+                const rx = (Math.random() - 0.5) * 20000;
+                const rz = (Math.random() - 0.5) * 20000;
                 const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
                 base.position.set(rx, ry + 40, rz);
                 base.userData.type = 'destroyable';
                 base.userData.hp = 3;
+                // Add Beacon
+                const beacon = createBeacon(base.position, color);
+                base.userData.beacon = beacon;
+                planetEnvironment.add(beacon);
+
                 planetEnvironment.add(base);
                 missionObjects.push(base);
             }
@@ -2292,12 +2634,17 @@
                         roughness: 0.3
                     })
                 );
-                const rx = (Math.random() - 0.5) * 6000;
-                const rz = (Math.random() - 0.5) * 6000;
+                const rx = (Math.random() - 0.5) * 20000;
+                const rz = (Math.random() - 0.5) * 20000;
                 const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
                 monolith.position.set(rx, ry + 50, rz);
                 monolith.userData.type = 'scannable';
                 monolith.userData.scanned = false;
+                // Add Beacon
+                const beacon = createBeacon(monolith.position, color);
+                monolith.userData.beacon = beacon;
+                planetEnvironment.add(beacon);
+
                 planetEnvironment.add(monolith);
                 missionObjects.push(monolith);
 
@@ -2317,25 +2664,65 @@
             }
         }
 
-        function createParticleRing(pos, color) {
-            const geo = new THREE.BufferGeometry();
-            const positions = [];
-            for (let i = 0; i < 50; i++) {
-                const angle = (i / 50) * Math.PI * 2;
-                positions.push(
-                    Math.cos(angle) * 30,
-                    Math.sin(i * 0.5) * 10,
-                    Math.sin(angle) * 30
+        function spawnDefenseTarget(color) {
+            const dish = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(20, 30, 10), new THREE.MeshStandardMaterial({ color: 0x444444 }));
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 60), new THREE.MeshStandardMaterial({ color: 0x666666 }));
+            pole.position.y = 35;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(25, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide }));
+            head.position.y = 65;
+            head.rotation.x = -Math.PI / 4;
+            dish.add(base, pole, head);
+            dish.position.set(200, 50, 200);
+            dish.userData.type = 'target';
+            dish.userData.hp = 100;
+            dish.userData.maxHp = 100;
+            planetEnvironment.add(dish);
+            missionObjects.push(dish);
+            missionTimer = 120; // 2 minutes survive
+            missionActive = true;
+            showNotification("DÉFENDEZ LE SATELLITE 📡");
+        }
+
+        function spawnRaceCourse(count) {
+            for (let i = 0; i < count; i++) {
+                const ring = new THREE.Mesh(
+                    new THREE.TorusGeometry(50, 5, 16, 32),
+                    new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5 })
                 );
+                const angle = (i / count) * Math.PI * 2;
+                const radius = 2000 + i * 2000;
+                const rx = Math.cos(angle) * radius;
+                const rz = Math.sin(angle) * radius;
+                const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + 400 + (Math.random() * 300);
+                ring.position.set(rx, ry, rz);
+                ring.userData.type = 'ring';
+                ring.userData.order = i;
+                ring.lookAt(0, ry, 0);
+                planetEnvironment.add(ring);
+                missionObjects.push(ring);
             }
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            const mat = new THREE.PointsMaterial({
-                color: color,
-                size: 5,
-                transparent: true,
-                opacity: 0.6
-            });
-            return new THREE.Points(geo, mat);
+            missionTimer = 90;
+            missionActive = true;
+            checkPointsHit = 0;
+            showNotification("PASSEZ DANS LES ANNEAUX ⭕");
+        }
+
+        function createBoss(color) {
+            const boss = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(100, 150, 100), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            const head = new THREE.Mesh(new THREE.BoxGeometry(60, 60, 60), new THREE.MeshStandardMaterial({ color: color }));
+            head.position.y = 100;
+            boss.add(body, head);
+            boss.position.set(4000, 100, 4000);
+            boss.userData.type = 'boss';
+            boss.userData.hp = 500;
+            boss.userData.maxHp = 500;
+            boss.userData.lastShot = 0;
+            planetEnvironment.add(boss);
+            missionObjects.push(boss);
+            bossEnemy = boss;
+            showNotification("ALERTE : GARDIEN GÉANT DÉTECTÉ 🤖");
         }
 
         function checkMissionObjectInteraction() {
@@ -2343,13 +2730,14 @@
                 const dist = camera.position.distanceTo(obj.position);
 
                 if (obj.userData.type === 'collectible' && dist < 100) {
+                    if (obj.userData.beacon) planetEnvironment.remove(obj.userData.beacon);
                     planetEnvironment.remove(obj);
                     missionObjects.splice(index, 1);
                     collectedItems++;
-                    score += 100;
-                    document.getElementById('score').innerText = "PRIME : " + score;
+                    credits += 100;
+                    document.getElementById('score').innerText = "PRIME : " + credits;
                     updateMissionProgress();
-                    showNotification('✅ CRISTAL COLLECTÉ !');
+                    showNotification('✅ OBJET COLLECTÉ !');
                 }
 
                 if (obj.userData.type === 'scannable' && !obj.userData.scanned && dist < 150) {
@@ -2358,6 +2746,23 @@
 
                 if (obj.userData.type === 'destroyable' && dist < 200) {
                     document.getElementById('prompt').innerText = "[CLIC] DÉTRUIRE L'ANTENNE";
+                }
+
+                if (obj.userData.type === 'ring' && obj.userData.order === checkPointsHit && dist < 100) {
+                    planetEnvironment.remove(obj);
+                    missionObjects.splice(index, 1);
+                    checkPointsHit++;
+                    collectedItems++;
+                    showNotification(`ANNEAU ${checkPointsHit}/5 REJOINT !`);
+                    updateMissionProgress();
+                }
+
+                if (obj.userData.type === 'target' && dist < 300) {
+                    document.getElementById('prompt').innerText = `SATELLITE HP: ${Math.round(obj.userData.hp)}%`;
+                }
+
+                if (obj.userData.type === 'boss' && dist < 1000) {
+                    document.getElementById('prompt').innerText = `BOSS HP: ${Math.round(obj.userData.hp)}`;
                 }
             });
         }
@@ -2375,6 +2780,11 @@
                         showNotification('🎉 MISSION ACCOMPLIE ! +500 PRIME');
                         credits += 500;
                         document.getElementById('score').innerText = "CREDITS : " + credits;
+
+                        // UNLOCK PROGRESSION
+                        planetProgress[currentMission.name] = true;
+                        if (typeof saveGame === 'function') saveGame(); // PERSISTENCE
+
                         currentMission = null;
                         missionObjects = [];
                         document.getElementById('objective-desc').innerText = "EXPLORATION TERMINÉE";
@@ -2393,6 +2803,15 @@
         }
 
         function startLanding(p) {
+            // Locking logic
+            const initialComplete = planetProgress["MOLTEN-X"] && planetProgress["NEPTUNE-PRO"];
+            const lockedPlanets = ["KRYPTON-ELITE", "VULCAN-9", "ICE-OMEGA"];
+
+            if (lockedPlanets.includes(p.userData.name) && !initialComplete) {
+                showNotification("ACCÈS REFUSÉ : Explorez d'abord MOLTEN-X et NEPTUNE-PRO");
+                return;
+            }
+
             currentPlanetObj = p;
 
             // Play 3D landing cinematic - the callback fires when cinematic ends
@@ -2432,14 +2851,14 @@
                     planetEnvironment.add(ground);
 
                     const rockGeo = new THREE.IcosahedronGeometry(15, 1);
-                    for (let i = 0; i < 150; i++) {
+                    for (let i = 0; i < 400; i++) { // More rocks for bigger map
                         const rock = new THREE.Mesh(rockGeo, groundMat);
-                        const rx = (Math.random() - 0.5) * 8000;
-                        const rz = (Math.random() - 0.5) * 8000;
+                        const rx = (Math.random() - 0.5) * 25000; // Expanded range
+                        const rz = (Math.random() - 0.5) * 25000;
                         const ry = (Math.sin(rx / 500) * Math.cos(rz / 500) * 200) + (Math.sin(rx / 100) * 30);
                         rock.position.set(rx, ry + 5, rz);
                         rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-                        rock.scale.setScalar(Math.random() * 3 + 1);
+                        rock.scale.setScalar(Math.random() * 5 + 1);
                         planetEnvironment.add(rock);
                     }
 
@@ -2495,14 +2914,16 @@
         }
 
         function onMouseMove(e) {
-            if (!isLocked) return;
-            const s = 0.002;
+            if (!isLocked || isInCinematic || shopOpen || settingsOpen) return;
+            const sensValue = 0.002 * sensitivity;
             if (currentMode === 'SPACE') {
-                shipRot.yaw -= e.movementX * s;
-                shipRot.pitch -= e.movementY * s;
+                shipRot.yaw -= e.movementX * sensValue;
+                shipRot.pitch -= e.movementY * sensValue;
+                shipRot.pitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, shipRot.pitch));
             } else {
-                playerRot.yaw -= e.movementX * s;
-                playerRot.pitch = Math.max(-1.5, Math.min(1.5, playerRot.pitch - e.movementY * s));
+                playerRot.yaw -= e.movementX * sensValue;
+                playerRot.pitch -= e.movementY * sensValue;
+                playerRot.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, playerRot.pitch));
             }
         }
 
@@ -2598,22 +3019,36 @@
                         });
 
                         missionObjects.forEach((obj, i) => {
-                            if (obj.userData.type === 'destroyable' && l.position.distanceTo(obj.position) < 200) {
-                                obj.userData.hp--;
-                                if (obj.userData.hp <= 0) {
-                                    planetEnvironment.remove(obj);
-                                    missionObjects.splice(i, 1);
-                                    collectedItems++;
-                                    credits += 150;
-                                    document.getElementById('score').innerText = "CREDITS : " + credits;
-                                    updateMissionProgress();
-                                    showNotification('💥 ANTENNE DÉTRUITE !');
+                            const d = l.position.distanceTo(obj.position);
+                            if (d < 150) {
+                                if (obj.userData.type === 'destroyable' || obj.userData.type === 'boss') {
+                                    obj.userData.hp -= (upgrades.laserLevel * 2);
+                                    if (obj.userData.hp <= 0) {
+                                        if (obj.userData.beacon) planetEnvironment.remove(obj.userData.beacon);
+                                        planetEnvironment.remove(obj);
+                                        missionObjects.splice(i, 1);
+                                        collectedItems++;
+                                        credits += 300;
+                                        document.getElementById('score').innerText = "CREDITS : " + credits;
+                                        updateMissionProgress();
+                                        showNotification('CIBLE DÉTRUITE ! 💥');
+                                    }
+                                    scene.remove(l);
+                                }
+                            }
+                        });
 
-                                    // 50% chance of ambush
-                                    if (Math.random() < 0.5) spawnAmbush(obj.position);
+                        // Shoot Drones
+                        enemiesInWave.forEach((dr, i) => {
+                            if (l.position.distanceTo(dr.position) < 100) {
+                                dr.userData.hp--;
+                                if (dr.userData.hp <= 0) {
+                                    planetEnvironment.remove(dr);
+                                    enemiesInWave.splice(i, 1);
+                                    credits += 50;
+                                    document.getElementById('score').innerText = "CREDITS : " + credits;
                                 }
                                 scene.remove(l);
-                                return;
                             }
                         });
 
@@ -2658,33 +3093,99 @@
         }
 
         function tryInteract() {
+            if (isInCinematic) return;
             if (currentMode === 'SPACE') {
                 planets.forEach(p => {
-                    if (ship.position.distanceTo(p.position) < p.userData.size + 4000) startLanding(p); // x5 interact dist
+                    if (ship.position.distanceTo(p.position) < p.userData.size + 4000) startLanding(p);
                 });
+
+                if (warpGate && questStage === 4) {
+                    if (ship.position.distanceTo(warpGate.position) < 1500) {
+                        if (credits >= 5000) {
+                            credits -= 5000;
+                            specialItems.gateRepaired = true;
+                            showNotification("PORTE ACTIVÉE ! SAUT QUANTIQUE EN COURS...");
+                            setTimeout(() => {
+                                alert("MISSION ACCOMPLIE ! Victoire Galeactique.");
+                                location.reload();
+                            }, 3000);
+                        } else showNotification("PAS ASSEZ DE CRÉDITS (5000 REQUIS)");
+                    }
+                }
             } else {
-                if (camera.position.distanceTo(ship.position) < 750) { // x5 interact dist
+                // Return to Ship logic (Distance based)
+                const distToShip = camera.position.distanceTo(ship.position);
+                if (distToShip < 750) {
                     exitPlanet();
-                } else {
-                    missionObjects.forEach(obj => {
-                        if (obj.userData.type === 'scannable' && !obj.userData.scanned && camera.position.distanceTo(obj.position) < 150) {
-                            obj.userData.scanned = true;
+                    return;
+                }
+
+                // Mission Objects
+                missionObjects.forEach((obj, index) => {
+                    const dist = camera.position.distanceTo(obj.position);
+                    if (dist < 300) {
+                        if (obj.userData.type === 'vent' && !obj.userData.cooled) {
+                            obj.userData.cooled = true;
+                            obj.remove(obj.userData.steam);
+                            obj.material.color.set(0x111111);
+                            showNotification("ÉVENT REFROIDI !");
                             collectedItems++;
-                            score += 120;
-                            document.getElementById('score').innerText = "PRIME : " + score;
                             updateMissionProgress();
-                            showNotification('🔍 MONOLITHE SCANNÉ !');
-
-                            // 50% chance of ambush
-                            if (Math.random() < 0.5) spawnAmbush(ship.position);
-
-                            obj.traverse(child => {
-                                if (child.isMesh && child.material.emissive) {
-                                    child.material.emissiveIntensity = 1;
-                                }
-                            });
                         }
-                    });
+                        else if (obj.userData.type === 'terminal' && !obj.userData.hacked) {
+                            obj.userData.hacked = true;
+                            obj.children[1].material.color.set(0xff0000);
+                            showNotification("TERMINAL PIRATÉ !");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'pylon' && !obj.userData.active) {
+                            obj.userData.active = true;
+                            obj.material.emissive = new THREE.Color(0x00f0ff);
+                            obj.material.emissiveIntensity = 2;
+                            showNotification("PYLÔNE ACTIVÉ !");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'cipher' && questStage === 2) {
+                            specialItems.cipherFound = true;
+                            showNotification("CHIFFRE RÉCUPÉRÉ !");
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            collectedItems++;
+                            updateMissionProgress();
+                            updateQuest();
+                        }
+                        else if (obj.userData.type === 'powerCore' && questStage === 3) {
+                            specialItems.powerCores++;
+                            showNotification(`NOYAU RÉCUPÉRÉ (${specialItems.powerCores}/5)`);
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            collectedItems++;
+                            updateMissionProgress();
+                            updateQuest();
+                        }
+                        else if (obj.userData.type === 'collectible') {
+                            collectedItems++;
+                            credits += 100;
+                            showNotification("OBJET RÉCUPÉRÉ");
+                            planetEnvironment.remove(obj);
+                            missionObjects.splice(index, 1);
+                            updateMissionProgress();
+                        }
+                        else if (obj.userData.type === 'scannable' && !obj.userData.scanned) {
+                            obj.userData.scanned = true;
+                            showNotification("SCAN TERMINÉ");
+                            collectedItems++;
+                            updateMissionProgress();
+                        }
+                    }
+                });
+
+                // --- BOUNDARY EXIT CHECK ---
+                if (camera.position.length() > 15000) {
+                    showNotification("LIMITES PLANÉTAIRES ATTEINTES : DÉCOLLAGE...")
+                    exitPlanet();
                 }
             }
         }
@@ -2761,25 +3262,166 @@
                         }
                     });
 
+                    // MISSION PERSISTENT LOGIC (SPACE)
+                    if (missionActive && currentMode === 'SPACE') {
+                        // Timer logic if any
+                    }
+
                 } else {
                     camera.rotation.set(playerRot.pitch, playerRot.yaw, 0, 'YXZ');
-                    const moveSpd = 350 * delta;
+
+                    // FOOT UPGRADES: Speed & Jetpack
+                    const baseSpeed = 350;
+                    const speedMultiplier = 1 + (upgrades.footSpeed - 1) * 0.4; // +40% per level
+                    const moveSpd = baseSpeed * speedMultiplier * delta;
+
+                    // Horizontal Movement
                     if (keys['KeyW'] || keys['KeyZ']) camera.translateZ(-moveSpd);
                     if (keys['KeyS']) camera.translateZ(moveSpd);
                     if (keys['KeyA'] || keys['KeyQ']) camera.translateX(-moveSpd);
                     if (keys['KeyD']) camera.translateX(moveSpd);
 
+                    // Physics: Gravity & Jetpack
+                    const gravity = -400 * delta;
+                    verticalVelocity += gravity;
+
+                    if (upgrades.jetpack > 0) {
+                        const fuelUI = document.getElementById('fuel-container');
+                        fuelUI.style.display = 'block';
+                        const fuelBar = document.getElementById('fuel-bar');
+
+                        if (keys['Space'] && jetpackFuel > 0) {
+                            const thrust = (300 + upgrades.jetpack * 200) * delta;
+
+                            verticalVelocity += thrust;
+                            // Cap velocity
+                            verticalVelocity = Math.min(verticalVelocity, 12);
+
+                            // Small visual effect/notification for jetpack
+                            jetpackFuel -= 35 * delta;
+                            if (time % 1 < 0.1) showNotification("JETPACK EN SERVICE 🚀");
+                        }
+
+                        jetpackFuel = Math.max(0, Math.min(jetpackFuel, maxJetpackFuel));
+                        fuelBar.style.width = (jetpackFuel / maxJetpackFuel * 100) + "%";
+                    } else {
+                        const fUI = document.getElementById('fuel-container');
+                        if (fUI) fUI.style.display = 'none';
+                    }
+
+                    // Limites de vélocité
+                    verticalVelocity = Math.max(verticalVelocity, -15);
+                    verticalVelocity = Math.min(verticalVelocity, 12);
+
+
+                    camera.position.y += verticalVelocity * delta * 60; // Scale for delta
+
                     const tx = camera.position.x;
                     const tz = camera.position.z;
-                    const ty = (Math.sin(tx / 500) * Math.cos(tz / 500) * 200) + (Math.sin(tx / 100) * 30);
-                    camera.position.y = ty + 40;
+                    const terrainY = (Math.sin(tx / 500) * Math.cos(tz / 500) * 200) + (Math.sin(tx / 100) * 30);
+                    const feetY = terrainY + 40;
+
+                    if (camera.position.y < feetY) {
+                        camera.position.y = feetY;
+                        verticalVelocity = 0;
+                        isJumping = false;
+                        if (upgrades.jetpack > 0) jetpackFuel += 25 * delta; // Recharge au sol
+                    }
+
+                    // --- MISSION LOGIC (PLANET) ---
+                    if (missionActive) {
+                        missionTimer -= delta;
+                        if (missionTimer <= 0) {
+                            missionActive = false;
+                            if (currentMission.name === "NEPTUNE-PRO" && planetMissionStage === 0) {
+                                // Defense Success
+                                collectedItems = 1;
+                                updateMissionProgress();
+                            } else if (currentMission.name === "VULCAN-9" && planetMissionStage === 0) {
+                                // Race Failed
+                                showNotification("TEMPS ÉCOULÉ ! MISSION ÉCHOUÉE");
+                                exitPlanet();
+                            }
+                        }
+
+                        // Update HUD with Mission Info
+                        let missionInfo = `OBJECTIF: ${currentMission.desc}`;
+                        if (missionTimer > 0) missionInfo += ` | TEMPS: ${Math.round(missionTimer)}s`;
+                        document.getElementById('objective-desc').innerText = missionInfo;
+
+                        // DEFENSE MODE: Spawn Drones
+                        if (currentMission.name === "NEPTUNE-PRO" && planetMissionStage === 0) {
+                            const target = missionObjects.find(o => o.userData.type === 'target');
+                            if (target) {
+                                // Spawn waves logic? Simplified: 1 wave of 5 drones every 30s
+                                if (enemiesInWave.length === 0 && Math.round(missionTimer) % 30 === 0 && Math.round(missionTimer) > 0) {
+                                    for (let i = 0; i < 5; i++) {
+                                        const drone = createEnemyShip();
+                                        drone.position.set(Math.random() * 4000 - 2000, 500, Math.random() * 4000 - 2000);
+                                        drone.userData = { hp: 5, target: target, type: 'drone' };
+                                        planetEnvironment.add(drone);
+                                        enemiesInWave.push(drone);
+                                    }
+                                }
+                                // Drones attack target
+                                enemiesInWave.forEach((dr, i) => {
+                                    dr.lookAt(target.position);
+                                    dr.translateZ(-5);
+                                    if (dr.position.distanceTo(target.position) < 200) {
+                                        target.userData.hp -= 0.1;
+                                        if (target.userData.hp <= 0) {
+                                            showNotification("SATELLITE DÉTRUIT ! ÉCHEC");
+                                            exitPlanet();
+                                        }
+                                    }
+                                    // Player can destroy drones? (Laser logic handles it if labeled)
+                                });
+                            }
+                        }
+
+                        // BOSS AI
+                        if (bossEnemy) {
+                            bossEnemy.lookAt(camera.position);
+                            if (time - bossEnemy.userData.lastShot > 3) {
+                                showNotification("LE GARDIEN ATTAQUE ! ⚠️");
+                                bossEnemy.lookAt(camera.position);
+                                // Boss projectile logic? 
+                                bossEnemy.userData.lastShot = time;
+                            }
+                        }
+                    }
+
+                    // --- SHIP COMPASS/INDICATOR ---
+                    const indicator = document.getElementById('ship-indicator');
+                    if (currentMode === 'PLANET') {
+                        indicator.style.display = 'block';
+                        const dist = Math.round(camera.position.length());
+                        document.getElementById('ship-dist').innerText = dist;
+
+                        // Direction arrow logic
+                        const shipDir = new THREE.Vector3(0, 0, 0).sub(camera.position).normalize();
+                        const camDir = new THREE.Vector3();
+                        camera.getWorldDirection(camDir);
+
+                        const angle = Math.atan2(shipDir.x, shipDir.z) - Math.atan2(camDir.x, camDir.z);
+                        indicator.style.transform = `translateX(-50%) rotate(${angle}rad)`;
+                    } else {
+                        indicator.style.display = 'none';
+                    }
 
                     document.getElementById('prompt').innerText = "";
                     if (camera.position.distanceTo(ship.position) < 200) {
                         document.getElementById('prompt').innerText = "[E] RETOUR AU VAISSEAU";
                     }
 
-                    checkMissionObjectInteraction();
+                    // Mobile Look handling (simple auto-rotation if joystick is used? No, usually touch drag)
+                    // We'll rely on onMouseMove being mapped to touch drag elsewhere or just standard behavior.
+
+                    // Show Exit button on mobile if in Planet mode
+                    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                        document.getElementById('exit-btn').style.display = 'flex';
+                    }
+
                 }
             }
             if (composer) composer.render();
@@ -2932,9 +3574,12 @@
 
         function populateShop() {
             const items = [
-                { id: 'laser', name: 'PLASMA OVERCHARGE', cost: 500, desc: 'Increases laser damage & count', level: upgrades.laserLevel },
-                { id: 'damage', name: 'TITAN PLATING', cost: 800, desc: 'Increases Ship Hull HP (+500)', level: upgrades.armor },
-                { id: 'speed', name: 'THRUSTER BOOST', cost: 400, desc: 'Increases flight speed by 20%', level: upgrades.speed }
+                { id: 'laser', name: 'PLASMA OVERCHARGE', cost: 500, desc: 'Augmente les dégâts & le nombre de lasers', level: upgrades.laserLevel },
+                { id: 'damage', name: 'TITAN PLATING', cost: 800, desc: 'Augmente la coque du vaisseau (+500 HP)', level: upgrades.armor },
+                { id: 'speed', name: 'THRUSTER BOOST', cost: 400, desc: 'Augmente la vitesse de vol de 20%', level: upgrades.speed },
+                { id: 'footSpeed', name: 'BOTTES MAGNÉTIQUES', cost: 600, desc: 'Marcher plus vite sur les planètes', level: upgrades.footSpeed },
+                { id: 'jetpack', name: 'SYSTÈME JETPACK', cost: 1200, desc: 'Permet de voler [ESPACE]', level: upgrades.jetpack },
+                { id: 'reset', name: 'RAZ DONNÉES', cost: 0, desc: 'Réinitialiser toute la progression', level: 0 }
             ];
 
             const grid = document.getElementById('shop-items');
@@ -2972,16 +3617,39 @@
                     showNotification("ARMOR UPGRADED!");
                 }
                 else if (type === 'speed') upgrades.speed++;
+                else if (type === 'footSpeed') upgrades.footSpeed++;
+                else if (type === 'jetpack') upgrades.jetpack++;
+                else if (type === 'reset') {
+                    if (confirm("Réinitialiser toute la progression ?")) {
+                        localStorage.removeItem('odyssee_save');
+                        location.reload();
+                    }
+                    return;
+                }
 
                 populateShop(); // Refresh UI
+                saveGame(); // PERSISTENCE
                 showNotification("UPGRADE PURCHASED!");
             } else {
                 alert("NOT ENOUGH CREDITS!");
             }
         };
 
+        function toggleSettings() {
+            settingsOpen = !settingsOpen;
+            const ui = document.getElementById('settings-menu');
+            if (settingsOpen) {
+                ui.style.display = 'block';
+                document.exitPointerLock();
+            } else {
+                ui.style.display = 'none';
+                if (!isTouch && gameStarted) document.body.requestPointerLock();
+            }
+        }
+
         window.addEventListener('keydown', e => {
             if (e.code === 'KeyB') toggleShop();
+            if (e.code === 'Escape' || e.code === 'KeyM') toggleSettings();
         });
 
         // SPACE COMBAT SYSTEM
@@ -3107,15 +3775,19 @@
                 const relX = pos.x - playerPos.x;
                 const relZ = pos.z - playerPos.z;
 
-                // Rotate based on player yaw
-                const cos = Math.cos(-playerYaw);
-                const sin = Math.sin(-playerYaw);
-                const rotX = relX * cos - relZ * sin;
-                const rotZ = relX * sin + relZ * cos;
+                // FIXED RADAR ROTATION: Forward is "Up"
+                // In Three.js, facing 0 yaw means looking at -Z.
+                // We want that -Z to be "Up" on radar.
+                const cos = Math.cos(playerYaw);
+                const sin = Math.sin(playerYaw);
+
+                // Rotate world coordinates to local coordinates
+                const rotX = relX * cos + relZ * sin;
+                const rotZ = -relX * sin + relZ * cos;
 
                 if (Math.abs(rotX) < range && Math.abs(rotZ) < range) {
                     const px = center.x + (rotX / range) * (w / 2);
-                    const py = center.y + (rotZ / range) * (h / 2);
+                    const py = center.y + (rotZ / range) * (h / 2); // Here rotZ is local-forward (if negative)
 
                     radarCtx.fillStyle = color;
                     radarCtx.beginPath();
@@ -3339,110 +4011,6 @@
             showNotification(`DÉTECTION : ${count} NOYAUX D'ÉNERGIE DESSÉMINÉS !`);
         }
 
-        function tryInteract() {
-            if (isInCinematic) return;
-
-            if (currentMode === 'SPACE') {
-                // Check if near planet
-                planets.forEach(p => {
-                    if (ship.position.distanceTo(p.position) < p.userData.size + 1000) {
-                        startLanding(p);
-                    }
-                });
-
-                // Check Warp Gate
-                if (warpGate && questStage === 4) {
-                    if (ship.position.distanceTo(warpGate.position) < 1500) {
-                        if (credits >= 5000) {
-                            credits -= 5000;
-                            specialItems.gateRepaired = true;
-                            showNotification("PORTE ACTIVÉE ! SAUT QUANTIQUE EN COURS...");
-                            // Final Victory logic
-                            setTimeout(() => {
-                                showNotification("VICTOIRE ! VOUS AVEZ REJOINT LA TERRE.");
-                                alert("MISSION ACCOMPLIE ! Félicitations Commandant Ahmed.");
-                                location.reload();
-                            }, 3000);
-                        } else {
-                            showNotification("PAS ASSEZ DE CRÉDITS (5000 REQUIS)");
-                        }
-                    }
-                }
-            } else {
-                // Planet Mode
-                let interacted = false;
-                missionObjects.forEach((obj, index) => {
-                    const dist = camera.position.distanceTo(obj.position);
-                    if (dist < 300) {
-                        interacted = true;
-
-                        // NEW INTERACTIONS
-                        if (obj.userData.type === 'vent' && !obj.userData.cooled) {
-                            obj.userData.cooled = true;
-                            obj.remove(obj.userData.steam);
-                            obj.material.color.set(0x111111);
-                            showNotification("ÉVENT REFROIDI !");
-                            collectedItems++;
-                            updateMissionProgress();
-                        }
-                        else if (obj.userData.type === 'terminal' && !obj.userData.hacked) {
-                            obj.userData.hacked = true;
-                            obj.children[1].material.color.set(0xff0000); // Red screen
-                            showNotification("TERMINAL PIRATÉ !");
-                            collectedItems++;
-                            updateMissionProgress();
-                        }
-                        else if (obj.userData.type === 'pylon' && !obj.userData.active) {
-                            obj.userData.active = true;
-                            obj.material.emissive = new THREE.Color(0x00f0ff);
-                            obj.material.emissiveIntensity = 2;
-                            showNotification("PYLÔNE ACTIVÉ !");
-                            collectedItems++;
-                            updateMissionProgress();
-                        }
-                        // QUEST ITEMS
-                        else if (obj.userData.type === 'cipher' && questStage === 2) {
-                            specialItems.cipherFound = true;
-                            showNotification("CHIFFRE RÉCUPÉRÉ !");
-                            planetEnvironment.remove(obj);
-                            missionObjects.splice(index, 1);
-                            collectedItems++;
-                            updateMissionProgress();
-                            updateQuest();
-                        }
-                        else if (obj.userData.type === 'powerCore' && questStage === 3) {
-                            specialItems.powerCores++;
-                            showNotification(`NOYAU RÉCUPÉRÉ (${specialItems.powerCores}/5)`);
-                            planetEnvironment.remove(obj);
-                            missionObjects.splice(index, 1);
-                            collectedItems++;
-                            updateMissionProgress();
-                            updateQuest();
-                        }
-                        // LEGACY/MISC
-                        else if (obj.userData.type === 'collectible') {
-                            collectedItems++;
-                            credits += 100;
-                            showNotification("OBJET RÉCUPÉRÉ");
-                            planetEnvironment.remove(obj);
-                            missionObjects.splice(index, 1);
-                            updateMissionProgress();
-                        }
-                        else if (obj.userData.type === 'scannable' && !obj.userData.scanned) {
-                            obj.userData.scanned = true;
-                            showNotification("SCAN TERMINÉ");
-                            collectedItems++;
-                            updateMissionProgress();
-                        }
-                    }
-                });
-
-                // Exit planet check if no interaction
-                if (!interacted && camera.position.length() > 6000) {
-                    exitPlanet();
-                }
-            }
-        }
     </script>
 </body>
 
